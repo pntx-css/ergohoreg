@@ -1,0 +1,13 @@
+{
+  "name": "living-room-scene",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Scene dasar living room 3D berbasis A-Frame",
+  "scripts": {
+    "dev": "node tools/dev-server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

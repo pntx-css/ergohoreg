@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#a1b3b7">
+  <meta name="description" content="Jelajahi model ruang keluarga 3D dengan kontrol WASD dan mouse.">
+  <title>Living Room Scene</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./css/style.css">
+  <script src="./vendor/aframe-1.7.1.min.js"></script>
+  <script src="./js/scene.js"></script>
+  <script src="./js/furniture-system.js"></script>
+  <script src="./js/ergonomics.js"></script>
+</head>
+<body>
+  <div id="touch-move" aria-hidden="true"></div>
+  <div id="crosshair" aria-hidden="true"></div>
+  <div id="collision-debug-panel" aria-live="polite" hidden></div>
+  <section id="ergonomics-panel" aria-live="polite" aria-label="Nilai ergonomi ruangan">
+    <h1>Ergonomi Ruang</h1>
+    <div class="metric-row" data-metric="viewingDistance"><span>Viewing Distance</span><strong data-value="viewingDistance">70%</strong><div class="metric-track"><i data-bar="viewingDistance"></i></div></div>
+    <div class="metric-row" data-metric="noiseControl"><span>Noise Control</span><strong data-value="noiseControl">70%</strong><div class="metric-track"><i data-bar="noiseControl"></i></div></div>
+    <div class="metric-row" data-metric="lighting"><span>Lighting</span><strong data-value="lighting">70%</strong><div class="metric-track"><i data-bar="lighting"></i></div></div>
+    <div class="metric-row" data-metric="roomLayout"><span>Room Layout</span><strong data-value="roomLayout">70%</strong><div class="metric-track"><i data-bar="roomLayout"></i></div></div>
+    <div class="metric-row" data-metric="airQuality"><span>Air Quality</span><strong data-value="airQuality">70%</strong><div class="metric-track"><i data-bar="airQuality"></i></div></div>
+    <div class="final-score"><span>Final Ergonomic Score</span><strong data-final-score>70%</strong></div>
+  </section>
+  <div id="interaction-hint" role="status" hidden></div>
+  <div id="grab-controls" aria-label="Kontrol furnitur">
+    <button id="rotate-left-button" type="button" aria-label="Putar kiri">Q&nbsp; ↶</button>
+    <button id="height-down-button" type="button" aria-label="Turunkan TV">TV&nbsp; −</button>
+    <button id="grab-button" type="button" disabled>Dekati furnitur</button>
+    <button id="height-up-button" type="button" aria-label="Naikkan TV">TV&nbsp; +</button>
+    <button id="rotate-right-button" type="button" aria-label="Putar kanan">R&nbsp; ↷</button>
+  </div>
+  <a-scene
+    room-lighting
+    room-shell
+    furniture-editor
+    ergonomics-evaluator
+    background="color: #a1b3b7"
+    loading-screen="enabled: false"
+    vr-mode-ui="enabled: true"
+    webxr="referenceSpaceType: local-floor; optionalFeatures: local-floor, bounded-floor"
+    renderer="colorManagement: true; toneMapping: ACESFilmic; exposure: 1">
+    <a-assets timeout="60000">
+      <a-asset-item id="living-room-model" src="./models/living_room_interior_free.glb"></a-asset-item>
+      <a-asset-item id="speaker-model" src="./models/speaker_heads.glb"></a-asset-item>
+    </a-assets>
+
+    <a-sky color="#a1b3b7"></a-sky>
+
+    <a-entity light="type: ambient; color: #fff8eb; intensity: 1.1"></a-entity>
+    <a-entity
+      light="type: directional; color: #fff1d8; intensity: 1.7; castShadow: false"
+      position="1 4 -2"></a-entity>
+
+    <a-plane
+      id="ground"
+      position="0 -0.035 -0.37"
+      rotation="-90 0 0"
+      width="6.1"
+      height="7.3"
+      material="shader: standard; color: #a39a8c; roughness: 1; metalness: 0; side: double"></a-plane>
+
+    <a-entity
+      id="living-room"
+      gltf-model="#living-room-model"
+      position="0 -0.165412 0"
+      rotation="0 0 0"
+      scale="0.2 0.2 0.2"></a-entity>
+
+    <a-entity id="speaker-template" gltf-model="#speaker-model" visible="false"></a-entity>
+
+    <a-entity id="player-rig" position="1.2 0 1.55" fps-controls="speed: 1.35" room-collision>
+      <a-entity
+        id="player-camera"
+        camera="fov: 72; near: 0.06; far: 60"
+        look-controls="pointerLockEnabled: true; touchEnabled: true; magicWindowTrackingEnabled: false"
+        spawn-look
+        position="0 1.62 0"
+        rotation="-5 20 0"></a-entity>
+    </a-entity>
+  </a-scene>
+</body>
+</html>

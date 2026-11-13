@@ -1,0 +1,252 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #a1b3b7;
+  touch-action: none;
+}
+
+a-scene {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+a-scene canvas {
+  display: block;
+}
+
+.a-enter-vr {
+  display: none !important;
+}
+
+body.xr-capable .a-enter-vr {
+  display: block !important;
+}
+
+#touch-move {
+  display: none;
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  bottom: 0;
+  width: 50vw;
+  height: 100dvh;
+  touch-action: none;
+}
+
+#crosshair {
+  position: fixed;
+  z-index: 7;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+#crosshair::before,
+#crosshair::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  background: #fff;
+  border-radius: 2px;
+  content: "";
+  transform: translate(-50%, -50%);
+  transition: background-color 100ms ease;
+}
+
+#crosshair::before {
+  width: 2px;
+  height: 12px;
+}
+
+#crosshair::after {
+  width: 12px;
+  height: 2px;
+}
+
+#crosshair.is-target::before,
+#crosshair.is-target::after {
+  background: #43ef76;
+}
+
+#collision-debug-panel {
+  position: fixed;
+  z-index: 5;
+  top: 12px;
+  left: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 6px;
+  background: rgb(10 22 28 / 88%);
+  color: #eafcff;
+  font: 600 12px/1.4 system-ui, sans-serif;
+  pointer-events: none;
+}
+
+#collision-debug-panel[hidden] {
+  display: none;
+}
+
+#ergonomics-panel {
+  position: fixed;
+  z-index: 4;
+  top: 14px;
+  right: 14px;
+  width: min(280px, calc(100vw - 28px));
+  padding: 14px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 12px;
+  background: rgb(14 27 31 / 88%);
+  color: #eff8f7;
+  font: 500 12px/1.35 system-ui, sans-serif;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+#ergonomics-panel h1 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  margin: 7px 0;
+}
+
+.metric-row strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-track {
+  grid-column: 1 / -1;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: rgb(255 255 255 / 18%);
+}
+
+.metric-track i {
+  display: block;
+  width: 70%;
+  height: 100%;
+  border-radius: inherit;
+  background: #65df9a;
+  transition: width 180ms ease;
+}
+
+.final-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(255 255 255 / 22%);
+  font-weight: 700;
+}
+
+.final-score strong {
+  color: #9df0be;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+#interaction-hint {
+  position: fixed;
+  z-index: 5;
+  left: 50%;
+  bottom: 22px;
+  max-width: min(560px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 8px;
+  background: rgb(10 22 28 / 88%);
+  color: #f6fbfa;
+  font: 600 14px/1.4 system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+
+#interaction-hint[hidden] {
+  display: none;
+}
+
+#grab-controls {
+  display: none;
+  position: fixed;
+  z-index: 6;
+  right: 14px;
+  bottom: 14px;
+  align-items: center;
+  gap: 7px;
+}
+
+#grab-controls button {
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 32%);
+  border-radius: 10px;
+  background: rgb(14 27 31 / 88%);
+  color: white;
+  font: 700 13px/1 system-ui, sans-serif;
+  touch-action: manipulation;
+}
+
+#grab-controls button:disabled {
+  opacity: 0.48;
+}
+
+@media (pointer: coarse) {
+  #touch-move {
+    display: block;
+  }
+
+  #grab-controls {
+    display: flex;
+    max-width: calc(100vw - 20px);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  #ergonomics-panel {
+    top: 8px;
+    right: 8px;
+    width: min(230px, calc(50vw - 14px));
+    padding: 10px;
+    font-size: 11px;
+  }
+
+  #ergonomics-panel h1 {
+    font-size: 12px;
+  }
+
+  #interaction-hint {
+    bottom: 70px;
+    font-size: 12px;
+  }
+}
+
+body.in-vr #touch-move {
+  display: none;
+}
+
+body.in-vr #grab-controls {
+  display: none;
+}
