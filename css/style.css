@@ -99,6 +99,37 @@ body.xr-capable .a-enter-vr {
   display: none;
 }
 
+#position-coordinates {
+  position: fixed;
+  z-index: 5;
+  top: 28px;
+  left: 12px;
+  padding: 6px 10px;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 6px;
+  background: rgb(10 22 28 / 88%);
+  color: #eafcff;
+  font: 600 12px/1.4 system-ui, sans-serif;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+  max-width: 300px;
+}
+
+#position-coordinates span {
+  white-space: nowrap;
+}
+
+#position-coordinates strong {
+  font-variant-numeric: tabular-nums;
+}
+
+#position-coordinates div {
+  margin: 2px 0;
+}
+
 #ergonomics-panel {
   position: fixed;
   z-index: 4;

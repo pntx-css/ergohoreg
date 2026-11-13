@@ -17,6 +17,13 @@
   <div id="touch-move" aria-hidden="true"></div>
   <div id="crosshair" aria-hidden="true"></div>
   <div id="collision-debug-panel" aria-live="polite" hidden></div>
+  <div id="position-coordinates" style="position: fixed; z-index: 5; top: 28px; left: 12px; padding: 6px 10px; border: 1px solid rgb(255 255 255 / 25%); border-radius: 6px; background: rgb(10 22 28 / 88%); color: #eafcff; font: 600 12px/1.4 system-ui, sans-serif; pointer-events: none; display: flex; align-items: center; gap: 8px; min-width: 150px;">
+    <span>X: <strong id="pos-x">0.000</strong></span>
+    <span>|</span>
+    <span>Y: <strong id="pos-y">0.000</strong></span>
+    <span>|</span>
+    <span>Z: <strong id="pos-z">0.000</strong></span>
+  </div>
   <section id="ergonomics-panel" aria-live="polite" aria-label="Nilai ergonomi ruangan">
     <h1>Ergonomi Ruang</h1>
     <div class="metric-row" data-metric="viewingDistance"><span>Viewing Distance</span><strong data-value="viewingDistance">70%</strong><div class="metric-track"><i data-bar="viewingDistance"></i></div></div>

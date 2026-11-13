@@ -95,40 +95,51 @@ AFRAME.registerComponent('fps-controls', {
   },
 
   tick(time, delta) {
-    let strafe = Number(this.keys.has('KeyD')) - Number(this.keys.has('KeyA'));
-    let forward = Number(this.keys.has('KeyW')) - Number(this.keys.has('KeyS'));
+    const cameraObject = this.camera.object3D;
+    cameraObject.getWorldDirection(this.direction);
+    const forward = new THREE.Vector3(-this.direction.x, 0, -this.direction.z).normalize();
+
+    const up = new THREE.Vector3(0, 1, 0);
+    const right = new THREE.Vector3().crossVectors(forward, up).normalize();
+
+    let strafe = 0;
+    let forwardInput = 0;
+
+    if (this.keys.has('KeyW')) forwardInput++;
+    if (this.keys.has('KeyS')) forwardInput--;
+    if (this.keys.has('KeyA')) strafe--;
+    if (this.keys.has('KeyD')) strafe++;
 
     if (this.touchPointer) {
       strafe = this.touchAxis.x;
-      forward = this.touchAxis.y;
+      forwardInput = this.touchAxis.y;
     }
 
     const vrAxis = this.getVRAxis();
     if (vrAxis) {
       strafe = vrAxis.x;
-      forward = vrAxis.y;
+      forwardInput = vrAxis.y;
     }
 
-    const inputLength = Math.hypot(strafe, forward);
+    const inputLength = Math.hypot(strafe, forwardInput);
     if (inputLength > 1) {
       strafe /= inputLength;
-      forward /= inputLength;
+      forwardInput /= inputLength;
     }
 
-    const cameraObject = this.camera.object3D;
-    let yaw;
-    if (this.el.sceneEl.is('vr-mode')) {
-      cameraObject.getWorldDirection(this.direction);
-      yaw = Math.atan2(-this.direction.x, -this.direction.z);
-    } else {
-      yaw = this.camera.components['look-controls'].yawObject.rotation.y;
-    }
-
-    const step = this.data.speed * Math.min(delta || 0, 50) / 1000;
-    const dx = (strafe * Math.cos(yaw) - forward * Math.sin(yaw)) * step;
-    const dz = (strafe * Math.sin(yaw) - forward * Math.cos(yaw)) * step;
+    const dx = (strafe * right.x + forwardInput * forward.x) * this.data.speed * Math.min(delta || 0, 50) / 1000;
+    const dz = (strafe * right.z + forwardInput * forward.z) * this.data.speed * Math.min(delta || 0, 50) / 1000;
     this.el.components['room-collision'].move(dx, dz);
     this.el.components['room-collision'].constrainTrackedCamera(this.camera);
+
+    // Update live position coordinates
+    const posEl = document.getElementById('position-coordinates');
+    if (posEl) {
+      const cameraPos = this.camera.object3D.getWorldPosition(new THREE.Vector3());
+      document.getElementById('pos-x').textContent = cameraPos.x.toFixed(3);
+      document.getElementById('pos-y').textContent = cameraPos.y.toFixed(3);
+      document.getElementById('pos-z').textContent = cameraPos.z.toFixed(3);
+    }
   },
 
   remove() {
