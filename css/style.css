@@ -23,6 +23,58 @@ a-scene canvas {
   display: block;
 }
 
+#start-menu {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #f7f5ed;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  /* Solid backdrop: the 3D scene only appears after a mode is selected. */
+  background: linear-gradient(135deg, #0a191c 0%, #103338 56%, #0b2227 100%);
+  transition: opacity 320ms ease, visibility 320ms ease;
+}
+
+#start-menu::before {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(120deg, transparent 0 46px, rgb(255 255 255 / 3%) 47px 48px);
+  content: "";
+}
+
+.start-menu__glow {
+  position: absolute;
+  width: min(78vw, 900px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(117 229 188 / 22%), transparent 65%);
+  filter: blur(14px);
+}
+
+.start-menu__content { position: relative; width: min(520px, calc(100vw - 40px)); text-align: center; }
+.start-menu__eyebrow, .start-menu__footer { margin: 0; color: #9be1ca; font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+.start-menu h1 { margin: 7px 0 3px; font-size: clamp(48px, 9vw, 78px); letter-spacing: -.07em; line-height: .95; }
+.start-menu__intro { margin: 0 0 30px; color: #c5d5d4; font-size: 15px; }
+.mode-picker { display: grid; gap: 10px; }
+.mode-card { display: grid; align-items: center; width: 100%; min-height: 72px; padding: 14px 18px; border: 1px solid #285158; border-radius: 14px; color: inherit; text-align: left; cursor: pointer; background: #143238; box-shadow: 0 8px 20px rgb(0 0 0 / 14%); transition: transform 180ms ease, background 180ms ease, border-color 180ms ease; }
+.mode-card:hover, .mode-card:focus-visible { border-color: #8edec0; outline: none; background: #1a4348; transform: translateY(-2px); }
+.mode-card__text { display: grid; gap: 2px; }.mode-card__text strong { font-size: 16px; }.mode-card__text small { color: #b6c9c8; font-size: 13px; }
+.settings-toggle { min-height: 44px; margin-top: 20px; padding: 9px 14px; border: 0; color: #dce8e5; font: inherit; font-size: 14px; cursor: pointer; background: transparent; }.settings-toggle:hover, .settings-toggle:focus-visible { color: #9be1ca; outline: none; }
+.start-menu__footer { position: absolute; bottom: 24px; color: rgb(222 246 239 / 54%); font-size: 9px; }
+body:not(.is-start-menu-open) #start-menu { visibility: hidden; opacity: 0; pointer-events: none; }
+
+.settings-dialog { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(1 8 10 / 55%); backdrop-filter: blur(6px); }.settings-dialog[hidden] { display: none; }
+.settings-dialog__panel { width: min(410px, 100%); padding: 24px; border: 1px solid rgb(198 255 232 / 24%); border-radius: 18px; color: #eff8f5; background: #10282c; box-shadow: 0 22px 70px rgb(0 0 0 / 35%); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }.settings-dialog__heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }.settings-dialog__heading p { margin: 0 0 3px; color: #9be1ca; font-size: 10px; font-weight: 700; letter-spacing: .14em; }.settings-dialog__heading h2 { margin: 0; font-size: 24px; }.settings-close { min-height: 44px; padding: 0 12px; border: 1px solid #285158; border-radius: 8px; color: inherit; font: inherit; font-size: 14px; cursor: pointer; background: #143238; }.settings-close:hover, .settings-close:focus-visible { border-color: #8edec0; outline: none; background: #1a4348; }.settings-row { display: grid; grid-template-columns: 1fr minmax(120px, 170px) 42px; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid rgb(255 255 255 / 11%); font-size: 14px; }.settings-row input[type="range"] { width: 100%; accent-color: #8ee5c2; }.settings-row output { color: #9be1ca; text-align: right; font-variant-numeric: tabular-nums; }.settings-row--toggle { grid-template-columns: 1fr auto; }.settings-row--toggle input { width: 18px; height: 18px; accent-color: #8ee5c2; }.settings-dialog__note { margin: 8px 0 0; color: #a9bebc; font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 480px) { .start-menu__content { width: min(100% - 30px, 520px); }.mode-card { padding: 13px 15px; }.start-menu__footer { bottom: 16px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #start-menu,
+  .mode-card { transition: none; }
+}
+
 .a-enter-vr {
   display: none !important;
 }
