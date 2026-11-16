@@ -6,8 +6,8 @@ const ROOM_LAYOUT = {
   wallThickness: 0.16,
   wallDepthStart: -3.96,
   wallDepthEnd: 3.65,
-  // The GLB has walls on -X, -Z, and +Z. Only the +X side is open.
-  openings: [{side: 'right', line: 2.993, start: -3.96, end: 3.65}]
+  // The flat box GLB model contains all 4 complete, flat walls.
+  openings: []
 };
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -37,8 +37,100 @@ AFRAME.registerComponent('fps-controls', {
     this.camera = document.getElementById('player-camera');
     this.touchZone = document.getElementById('touch-move');
 
+    // Masuk ke Mode Melihat (kunci pointer penuh via Browser Pointer Lock API)
+    this.enterLookMode = () => {
+      if (document.pointerLockElement) return;
+      const target = this.el.sceneEl?.canvas || document.body;
+      try {
+        const promise = target.requestPointerLock?.() || document.body.requestPointerLock?.();
+        if (promise && typeof promise.catch === 'function') {
+          promise.catch(() => {});
+        }
+      } catch (_) {}
+    };
+
+    // Keluar dari Mode Melihat (masuk ke Mode ESC): kursor dilepas & berfungsi normal
+    this.exitLookMode = () => {
+      if (document.pointerLockElement) {
+        try {
+          document.exitPointerLock?.();
+        } catch (_) {}
+      }
+    };
+
+    // Klik 2 kali untuk masuk ke Mode Melihat
+    this.onDblClick = event => {
+      this.enterLookMode();
+    };
+
+    // Detektor klik ganda cepat (toleransi tap touchpad)
+    let lastClickTime = 0;
+    let lastClickX = 0;
+    let lastClickY = 0;
+    this.onClick = event => {
+      // Saat dalam Mode Melihat, matikan fungsi kursor klik di halaman secara total
+      if (document.pointerLockElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      const now = performance.now();
+      const timeDiff = now - lastClickTime;
+      const dist = Math.hypot(event.clientX - lastClickX, event.clientY - lastClickY);
+      if (timeDiff < 450 && dist < 40) {
+        this.enterLookMode();
+      }
+      lastClickTime = now;
+      lastClickX = event.clientX;
+      lastClickY = event.clientY;
+    };
+
+    // Tombol ESC melepas kursor dan masuk ke Mode ESC
+    this.onKeyDownEsc = event => {
+      if (event.code === 'Escape') {
+        this.exitLookMode();
+      }
+    };
+
+    // Rotasi kamera HANYA berjalan saat Mode Melihat aktif (pointer lock aktif).
+    // Dalam Mode ESC, kursor berfungsi normal dan touchpad TIDAK memutar kamera.
+    this.onMouseMove = event => {
+      if (!document.pointerLockElement) return;
+
+      const movementX = event.movementX || event.mozMovementX || 0;
+      const movementY = event.movementY || event.mozMovementY || 0;
+
+      if (!movementX && !movementY) return;
+
+      const look = this.camera?.components['look-controls'];
+      if (!look || !look.yawObject || !look.pitchObject) return;
+
+      const speed = 0.0022;
+      look.yawObject.rotation.y -= movementX * speed;
+      look.pitchObject.rotation.x -= movementY * speed;
+
+      const maxPitch = Math.PI / 2 - 0.05;
+      look.pitchObject.rotation.x = clamp(look.pitchObject.rotation.x, -maxPitch, maxPitch);
+    };
+
+    // Geser 2 jari pada touchpad (wheel event) saat Mode Melihat
+    this.onWheel = event => {
+      if (!document.pointerLockElement) return;
+      event.preventDefault();
+      const look = this.camera?.components['look-controls'];
+      if (!look || !look.yawObject || !look.pitchObject) return;
+
+      const speed = 0.0018;
+      look.yawObject.rotation.y -= event.deltaX * speed;
+      look.pitchObject.rotation.x -= event.deltaY * speed;
+
+      const maxPitch = Math.PI / 2 - 0.05;
+      look.pitchObject.rotation.x = clamp(look.pitchObject.rotation.x, -maxPitch, maxPitch);
+    };
+
     this.onKeyDown = event => {
-      if (!['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code)) return;
+      const allowed = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+      if (!allowed.includes(event.code)) return;
       event.preventDefault();
       this.keys.add(event.code);
     };
@@ -69,6 +161,12 @@ AFRAME.registerComponent('fps-controls', {
       this.touchAxis.x = 0;
       this.touchAxis.y = 0;
     };
+
+    window.addEventListener('dblclick', this.onDblClick, {capture: true});
+    window.addEventListener('click', this.onClick, {capture: true});
+    window.addEventListener('keydown', this.onKeyDownEsc, {capture: true});
+    window.addEventListener('mousemove', this.onMouseMove, {capture: true});
+    window.addEventListener('wheel', this.onWheel, {passive: false, capture: true});
 
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
@@ -105,10 +203,10 @@ AFRAME.registerComponent('fps-controls', {
     let strafe = 0;
     let forwardInput = 0;
 
-    if (this.keys.has('KeyW')) forwardInput++;
-    if (this.keys.has('KeyS')) forwardInput--;
-    if (this.keys.has('KeyA')) strafe--;
-    if (this.keys.has('KeyD')) strafe++;
+    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) forwardInput++;
+    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) forwardInput--;
+    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) strafe--;
+    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) strafe++;
 
     if (this.touchPointer) {
       strafe = this.touchAxis.x;
@@ -143,6 +241,12 @@ AFRAME.registerComponent('fps-controls', {
   },
 
   remove() {
+    window.removeEventListener('dblclick', this.onDblClick, {capture: true});
+    window.removeEventListener('click', this.onClick, {capture: true});
+    window.removeEventListener('keydown', this.onKeyDownEsc, {capture: true});
+    window.removeEventListener('mousemove', this.onMouseMove, {capture: true});
+    window.removeEventListener('wheel', this.onWheel, {passive: false, capture: true});
+
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.clearInput);

@@ -53,7 +53,6 @@
     renderer="colorManagement: true; toneMapping: ACESFilmic; exposure: 1">
     <a-assets timeout="60000">
       <a-asset-item id="living-room-model" src="./models/living_room_interior_free.glb"></a-asset-item>
-      <a-asset-item id="speaker-model" src="./models/speaker_heads.glb"></a-asset-item>
     </a-assets>
 
     <a-sky color="#a1b3b7"></a-sky>
@@ -78,13 +77,11 @@
       rotation="0 0 0"
       scale="0.2 0.2 0.2"></a-entity>
 
-    <a-entity id="speaker-template" gltf-model="#speaker-model" visible="false"></a-entity>
-
     <a-entity id="player-rig" position="1.2 0 1.55" fps-controls="speed: 1.35" room-collision>
       <a-entity
         id="player-camera"
         camera="fov: 72; near: 0.06; far: 60"
-        look-controls="pointerLockEnabled: true; touchEnabled: true; magicWindowTrackingEnabled: false"
+        look-controls="pointerLockEnabled: false; touchEnabled: true; magicWindowTrackingEnabled: false"
         spawn-look
         position="0 1.62 0"
         rotation="-5 20 0"></a-entity>

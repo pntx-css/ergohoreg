@@ -11,8 +11,8 @@ function furnitureRole(part) {
   const depth = maxZ - minZ;
   const source = part.source.toLowerCase();
 
-  // This tall, broad component is part of the room structure, so it remains static.
-  if (height > 3.2 && width > 2) return {role: 'structure', label: 'Struktur ruangan'};
+  // Tall/broad room structure or ceiling beams remain static.
+  if (minY > 2.5 || (height > 3.2 && width > 2)) return {role: 'structure', label: 'Struktur ruangan'};
   if (width > 2.2 && depth > 0.85 && height < 1.35) return {role: 'sofa', label: 'Sofa'};
   if (source.includes('material001_material009')) {
     return height > 1.7

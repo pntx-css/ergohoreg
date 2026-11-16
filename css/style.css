@@ -199,78 +199,16 @@ body.xr-capable .a-enter-vr {
 }
 
 #interaction-hint {
-  position: fixed;
-  z-index: 5;
-  left: 50%;
-  bottom: 22px;
-  max-width: min(560px, calc(100vw - 32px));
-  transform: translateX(-50%);
-  padding: 10px 16px;
-  border: 1px solid rgb(255 255 255 / 25%);
-  border-radius: 8px;
-  background: rgb(10 22 28 / 88%);
-  color: #f6fbfa;
-  font: 600 14px/1.4 system-ui, sans-serif;
-  text-align: center;
-  pointer-events: none;
-}
-
-#interaction-hint[hidden] {
-  display: none;
+  display: none !important;
 }
 
 #grab-controls {
-  display: none;
-  position: fixed;
-  z-index: 6;
-  right: 14px;
-  bottom: 14px;
-  align-items: center;
-  gap: 7px;
+  display: none !important;
 }
 
-#grab-controls button {
-  min-height: 46px;
-  padding: 0 12px;
-  border: 1px solid rgb(255 255 255 / 32%);
-  border-radius: 10px;
-  background: rgb(14 27 31 / 88%);
-  color: white;
-  font: 700 13px/1 system-ui, sans-serif;
-  touch-action: manipulation;
-}
-
-#grab-controls button:disabled {
-  opacity: 0.48;
-}
-
-@media (pointer: coarse) {
+@media (pointer: coarse) and (hover: none) {
   #touch-move {
     display: block;
-  }
-
-  #grab-controls {
-    display: flex;
-    max-width: calc(100vw - 20px);
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  #ergonomics-panel {
-    top: 8px;
-    right: 8px;
-    width: min(230px, calc(50vw - 14px));
-    padding: 10px;
-    font-size: 11px;
-  }
-
-  #ergonomics-panel h1 {
-    font-size: 12px;
-  }
-
-  #interaction-hint {
-    bottom: 70px;
-    font-size: 12px;
   }
 }
 
