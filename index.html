@@ -10,8 +10,10 @@
   <link rel="stylesheet" href="./css/style.css">
   <script src="./vendor/aframe-1.7.1.min.js"></script>
   <script src="./js/scene.js"></script>
+  <script src="./js/auto-furniture.js"></script>
   <script src="./js/furniture-system.js"></script>
   <script src="./js/ergonomics.js"></script>
+  <script type="module" src="./js/model-catalog.js"></script>
 </head>
 <body>
   <div id="touch-move" aria-hidden="true"></div>
@@ -46,6 +48,7 @@
     room-shell
     furniture-editor
     ergonomics-evaluator
+    auto-furniture-loader
     background="color: #a1b3b7"
     loading-screen="enabled: false"
     vr-mode-ui="enabled: true"
