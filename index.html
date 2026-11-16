@@ -5,15 +5,54 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#a1b3b7">
   <meta name="description" content="Jelajahi model ruang keluarga 3D dengan kontrol WASD dan mouse.">
-  <title>Living Room Scene</title>
+  <title>ErgoHoreg</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./css/style.css">
   <script src="./vendor/aframe-1.7.1.min.js"></script>
   <script src="./js/scene.js"></script>
   <script src="./js/furniture-system.js"></script>
   <script src="./js/ergonomics.js"></script>
+  <script defer src="./js/start-menu.js"></script>
 </head>
-<body>
+<body class="is-start-menu-open">
+  <main id="start-menu" aria-labelledby="game-title">
+    <div class="start-menu__glow" aria-hidden="true"></div>
+    <section class="start-menu__content">
+      <p class="start-menu__eyebrow">Ergonomic sound experience</p>
+      <h1 id="game-title">ErgoHoreg</h1>
+      <p class="start-menu__intro">Pilih cara Anda menjelajahi ruang.</p>
+
+      <div class="mode-picker" role="group" aria-label="Pilih mode bermain">
+        <button class="mode-card" type="button" data-mode="desktop">
+          <span class="mode-card__text"><strong>Desktop</strong><small>Keyboard &amp; mouse</small></span>
+        </button>
+        <button class="mode-card" type="button" data-mode="mobile">
+          <span class="mode-card__text"><strong>Mobile</strong><small>Layar sentuh</small></span>
+        </button>
+        <button class="mode-card" type="button" data-mode="vr">
+          <span class="mode-card__text"><strong>VR</strong><small>Headset virtual reality</small></span>
+        </button>
+      </div>
+
+      <button id="settings-toggle" class="settings-toggle" type="button" aria-haspopup="dialog" aria-expanded="false">
+        Pengaturan
+      </button>
+    </section>
+    <p class="start-menu__footer">ERGOHOREG / 3D SOUND ERGONOMICS</p>
+  </main>
+
+  <section id="settings-dialog" class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+    <div class="settings-dialog__panel">
+      <div class="settings-dialog__heading">
+        <div><p>ERGOHOREG</p><h2 id="settings-title">Pengaturan</h2></div>
+        <button id="settings-close" class="settings-close" type="button">Tutup</button>
+      </div>
+      <label class="settings-row" for="volume-control"><span>Volume</span><input id="volume-control" type="range" min="0" max="100" value="70"><output for="volume-control">70%</output></label>
+      <label class="settings-row settings-row--toggle" for="motion-control"><span>Kurangi gerakan</span><input id="motion-control" type="checkbox"></label>
+      <p class="settings-dialog__note">Pengaturan tampilan awal akan diterapkan saat pengalaman dikembangkan lebih lanjut.</p>
+    </div>
+  </section>
+
   <div id="touch-move" aria-hidden="true"></div>
   <div id="crosshair" aria-hidden="true"></div>
   <div id="collision-debug-panel" aria-live="polite" hidden></div>
