@@ -41,9 +41,9 @@ AFRAME.registerComponent('auto-furniture-loader', {
     this.loading = false;
     this.queue = [];
     this.seenPaths = new Set();
+    this.speakerPairSupport = new Map();
     this.placedModels = [];
     this.size = new THREE.Vector3();
-    this.direction = new THREE.Vector3();
     this.shell = null;
 
     this.onCatalogReady = () => {
@@ -82,10 +82,12 @@ AFRAME.registerComponent('auto-furniture-loader', {
       if (!model?.path || !model?.url || this.seenPaths.has(model.path)) continue;
       const role = classifyAutoModel(model.filename || model.path);
       this.seenPaths.add(model.path);
-      if (role.type === 'speaker') {
+      if (role.type === 'speaker' || role.type === 'speaker-pair') {
+        const pairModel = role.type === 'speaker-pair';
+        const speakerRole = {type: 'speaker', label: 'Speaker'};
         fresh.push(
-          {...model, role, instanceName: `${model.filename} (Left)`, side: 'left'},
-          {...model, role, instanceName: `${model.filename} (Right)`, side: 'right'}
+          {...model, role: speakerRole, speakerPairPart: pairModel, instanceName: `${model.filename} (Left)`, side: 'left'},
+          {...model, role: speakerRole, speakerPairPart: pairModel, instanceName: `${model.filename} (Right)`, side: 'right'}
         );
       } else {
         fresh.push({...model, role, instanceName: model.filename, side: null});
@@ -170,6 +172,44 @@ AFRAME.registerComponent('auto-furniture-loader', {
     return box;
   },
 
+  meshCount(object) {
+    let count = 0;
+    object.traverse(child => { if (child.isMesh) count++; });
+    return count;
+  },
+
+  findSpeakerBranches(root) {
+    let match = null;
+    const visit = object => {
+      const branches = object.children.filter(child => this.meshCount(child) > 0);
+      if (branches.length === 2) {
+        const counts = branches.map(branch => this.meshCount(branch));
+        if (Math.min(...counts) >= 2 && Math.abs(counts[0] - counts[1]) <= Math.max(...counts) * 0.15) match = branches;
+      }
+      for (const child of object.children) visit(child);
+    };
+    visit(root);
+    return match;
+  },
+
+  keepSpeakerBranch(entity, side) {
+    const root = entity.getObject3D('mesh');
+    if (!root) return false;
+    this.scene.object3D.updateMatrixWorld(true);
+    const branches = this.findSpeakerBranches(root);
+    if (!branches) return false;
+
+    const selected = branches[side === 'right' ? 1 : 0];
+    const localMatrix = root.matrixWorld.clone().invert().multiply(selected.matrixWorld.clone());
+    for (const branch of branches) if (branch !== selected) branch.removeFromParent();
+    selected.removeFromParent();
+    localMatrix.decompose(selected.position, selected.quaternion, selected.scale);
+    selected.updateMatrix();
+    root.add(selected);
+    this.scene.object3D.updateMatrixWorld(true);
+    return true;
+  },
+
   fitModelScale(entity, role, box) {
     box.getSize(this.size);
     const horizontalWidth = Math.max(this.size.x, this.size.z);
@@ -178,7 +218,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       tv: {width: 1.55, depth: 0.42, height: 1.0},
       'tv-stand': {width: 1.65, depth: 0.58, height: 0.62},
       'speaker-pair': {width: 1.45, depth: 0.62, height: 0.82},
-      speaker: {width: 0.5, depth: 0.48, height: 0.78},
+      speaker: {width: 0.55, depth: 0.52, height: 0.9},
       sofa: {width: 2.3, depth: 1.2, height: 1.12},
       table: {width: 1.2, depth: 0.82, height: 0.62},
       lamp: {width: 0.48, depth: 0.48, height: 1.72},
@@ -197,7 +237,18 @@ AFRAME.registerComponent('auto-furniture-loader', {
     if (!Number.isFinite(factor) || factor <= 0) throw new Error('Could not calculate a positive model scale.');
     entity.object3D.scale.setScalar(factor);
     this.scene.object3D.updateMatrixWorld(true);
-    const fittedBox = this.getModelBox(entity);
+    let fittedBox = this.getModelBox(entity);
+    if (role.type === 'tv-stand') {
+      fittedBox.getSize(this.size);
+      const widthAxis = this.size.x >= this.size.z ? 'x' : 'z';
+      entity.object3D.scale[widthAxis] *= 1.3;
+      this.scene.object3D.updateMatrixWorld(true);
+      fittedBox = this.getModelBox(entity);
+      fittedBox.getSize(this.size);
+      console.info('[Models] TV stand width increased by 30%.', {
+        dimensions: {width: Number(Math.max(this.size.x, this.size.z).toFixed(3)), height: Number(this.size.y.toFixed(3)), length: Number(Math.min(this.size.x, this.size.z).toFixed(3))}
+      });
+    }
     fittedBox.getSize(this.size);
     return fittedBox;
   },
@@ -221,17 +272,9 @@ AFRAME.registerComponent('auto-furniture-loader', {
   },
 
   preferredYaw(item) {
-    const room = this.getRoom();
-    const box = this.getModelBox(item.entity);
     if (item.role.type === 'sofa') return Math.PI;
-    if (item.role.type === 'tv' || item.role.type === 'tv-stand' || item.role.type === 'speaker-pair') return 0;
-    if (item.role.type === 'speaker') {
-      const sofa = this.getPlacedModel('sofa');
-      const target = sofa ? this.boxCenter(sofa.bounds) : new THREE.Vector3(0, this.getFloorY(), room.inside.minZ + 1.2);
-      const preferred = this.preferredCenter(item, box);
-      this.direction.set(target.x - preferred.x, 0, target.z - preferred.z);
-      return Math.atan2(-this.direction.x, -this.direction.z);
-    }
+    if (item.role.type === 'tv-stand') return Math.PI / 2;
+    if (item.role.type === 'tv' || item.role.type === 'speaker' || item.role.type === 'speaker-pair') return 0;
     if (item.role.type === 'chair') return Math.PI;
     if (item.role.type === 'cabinet') return -Math.PI / 2;
     return 0;
@@ -247,27 +290,28 @@ AFRAME.registerComponent('auto-furniture-loader', {
     const tvBox = tv?.bounds;
     const roomCenterX = (room.inside.minX + room.inside.maxX) / 2;
     const roomCenterZ = (room.inside.minZ + room.inside.maxZ) / 2;
-    const frontZ = room.inside.maxZ;
     const backZ = room.inside.minZ;
 
     switch (item.role.type) {
       case 'tv':
         if (tvStand) {
           const standCenter = this.boxCenter(tvStand.bounds);
-          const standDepth = tvStand.bounds.max.z - tvStand.bounds.min.z;
-          return new THREE.Vector3(standCenter.x, this.getFloorY(), standCenter.z - (standDepth - size.z) / 2);
+          return new THREE.Vector3(standCenter.x, this.getFloorY(), standCenter.z);
         }
-        return new THREE.Vector3(roomCenterX, this.getFloorY(), frontZ - size.z / 2 - 0.12);
+        return new THREE.Vector3(roomCenterX, this.getFloorY(), backZ + size.z / 2 + 0.08);
       case 'tv-stand':
-        return new THREE.Vector3(roomCenterX, this.getFloorY(), frontZ - size.z / 2 - 0.12);
+        return new THREE.Vector3(roomCenterX, this.getFloorY(), backZ + size.z / 2 + 0.08);
       case 'speaker-pair':
-        return new THREE.Vector3(roomCenterX, this.getFloorY(), (tvBox ? tvBox.min.z : frontZ - 0.35) - size.z / 2 - 0.12);
+        return new THREE.Vector3(roomCenterX, this.getFloorY(), tvBox ? this.boxCenter(tvBox).z : backZ + 0.5);
       case 'speaker': {
         const sideSign = item.side === 'left' ? -1 : 1;
-        const tvCenter = tvBox ? this.boxCenter(tvBox) : new THREE.Vector3(roomCenterX, this.getFloorY(), frontZ - 0.2);
+        const tvCenter = tvBox ? this.boxCenter(tvBox) : new THREE.Vector3(roomCenterX, this.getFloorY(), backZ + 0.5);
         const speakerWidth = Math.max(size.x, size.z);
+        const standBox = tvStand?.bounds;
         const tvWidth = tvBox ? Math.max(tvBox.max.x - tvBox.min.x, tvBox.max.z - tvBox.min.z) : 1.55;
-        const x = tvCenter.x + sideSign * (tvWidth / 2 + speakerWidth / 2 + 0.09);
+        const standWidth = standBox ? Math.max(standBox.max.x - standBox.min.x, standBox.max.z - standBox.min.z) : 0;
+        const systemWidth = Math.max(tvWidth, standWidth);
+        const x = tvCenter.x + sideSign * (systemWidth / 2 + speakerWidth / 2 + 0.12);
         return new THREE.Vector3(x, this.getFloorY(), tvCenter.z);
       }
       case 'sofa':
@@ -294,11 +338,11 @@ AFRAME.registerComponent('auto-furniture-loader', {
     }
   },
 
-  candidateBox(baseBox, centerX, centerZ) {
+  candidateBox(baseBox, centerX, centerZ, baseY = this.getFloorY()) {
     const center = baseBox.getCenter(new THREE.Vector3());
     const delta = new THREE.Vector3(
       centerX - center.x,
-      (this.activeItem?.baseY ?? this.getFloorY()) + AUTO_PLACEMENT_FLOOR_GAP - baseBox.min.y,
+      baseY + AUTO_PLACEMENT_FLOOR_GAP - baseBox.min.y,
       centerZ - center.z
     );
     return {box: baseBox.clone().translate(delta), delta};
@@ -312,19 +356,19 @@ AFRAME.registerComponent('auto-furniture-loader', {
     return verticalOverlap > 0.02 && xOverlap > 0.025 && zOverlap > 0.025;
   },
 
-  isValidCandidate(box, item) {
+  isValidCandidate(box, item, ignoreCollider = null) {
     const room = this.getRoom();
     const inside = room.inside;
     if (box.min.x < inside.minX + AUTO_PLACEMENT_MARGIN || box.max.x > inside.maxX - AUTO_PLACEMENT_MARGIN) return false;
     if (box.min.z < inside.minZ + AUTO_PLACEMENT_MARGIN || box.max.z > inside.maxZ - AUTO_PLACEMENT_MARGIN) return false;
     if (box.min.y < this.getFloorY() + AUTO_PLACEMENT_FLOOR_GAP - 0.002 || box.max.y > room.ceilingY - AUTO_PLACEMENT_MARGIN) return false;
-    return !this.shell.colliders.some(collider => collider !== item.collider && this.collidesWithBox(box, collider));
+    return !this.shell.colliders.some(collider => collider !== item.collider && collider !== ignoreCollider && this.collidesWithBox(box, collider));
   },
 
   findNearestFreePosition(baseBox, desiredCenter, item) {
     const room = this.getRoom();
     const test = (x, z) => {
-      const candidate = this.candidateBox(baseBox, x, z);
+      const candidate = this.candidateBox(baseBox, x, z, item.baseY);
       return this.isValidCandidate(candidate.box, item) ? candidate : null;
     };
     const direct = test(desiredCenter.x, desiredCenter.z);
@@ -377,12 +421,41 @@ AFRAME.registerComponent('auto-furniture-loader', {
   placeLoadedModel(entity, descriptor) {
     const root = entity.getObject3D('mesh');
     if (!root) throw new Error('The loader completed without a GLB mesh.');
+    let role = descriptor.role;
+    if (descriptor.speakerPairPart) {
+      const pairSupport = this.speakerPairSupport.get(descriptor.path);
+      if (pairSupport === false && descriptor.side === 'right') {
+        entity.remove();
+        return;
+      }
+      const separated = this.keepSpeakerBranch(entity, descriptor.side);
+      this.speakerPairSupport.set(descriptor.path, separated);
+      if (!separated) {
+        if (descriptor.side === 'right') {
+          entity.remove();
+          return;
+        }
+        role = {type: 'speaker-pair', label: 'Speaker pair'};
+        console.warn('[Models] Speaker pair could not be split into left/right objects; keeping it as one pair.', {path: descriptor.path});
+      }
+    }
+
+    let uprightX = 0;
+    if (role.type === 'speaker' || role.type === 'speaker-pair') {
+      const rawBox = this.getModelBox(entity);
+      const rawDimensions = rawBox.getSize(new THREE.Vector3());
+      if (rawDimensions.z > rawDimensions.y * 1.5 && rawDimensions.z > rawDimensions.x * 1.5) {
+        uprightX = -Math.PI / 2;
+        entity.object3D.rotation.x = uprightX;
+        this.scene.object3D.updateMatrixWorld(true);
+      }
+    }
     const tvStand = descriptor.role.type === 'tv' ? this.getPlacedModel('tv-stand') : null;
     const item = {
       entity,
       root,
       descriptor,
-      role: descriptor.role,
+      role,
       side: descriptor.side,
       bounds: null,
       collider: null,
@@ -392,22 +465,24 @@ AFRAME.registerComponent('auto-furniture-loader', {
     const rawSize = box.getSize(new THREE.Vector3());
     box = this.fitModelScale(entity, item.role, box);
     const yaw = this.preferredYaw(item);
-    entity.object3D.rotation.set(0, yaw, 0);
+    entity.object3D.rotation.order = uprightX ? 'YXZ' : 'XYZ';
+    entity.object3D.rotation.set(uprightX, yaw, 0);
     this.scene.object3D.updateMatrixWorld(true);
     box = this.fitInsideRoom(entity);
 
-    this.activeItem = item;
     let desired = this.preferredCenter(item, box);
-    let placement = this.findNearestFreePosition(box, desired, item);
+    const relationalPlacement = ['tv', 'tv-stand', 'speaker', 'speaker-pair'].includes(role.type);
+    let placement = relationalPlacement
+      ? this.candidateBox(box, desired.x, desired.z, item.baseY)
+      : this.findNearestFreePosition(box, desired, item);
     let crowdScale = 1;
-    while (!placement && crowdScale > 0.35) {
+    while (!placement && !relationalPlacement && crowdScale > 0.35) {
       crowdScale *= 0.85;
       entity.object3D.scale.multiplyScalar(0.85);
       box = this.fitInsideRoom(entity);
       desired = this.preferredCenter(item, box);
       placement = this.findNearestFreePosition(box, desired, item);
     }
-    this.activeItem = null;
     if (!placement) throw new Error('No collision-free position was found inside the room.');
 
     entity.object3D.position.add(placement.delta);

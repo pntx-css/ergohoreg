@@ -334,7 +334,7 @@ AFRAME.registerComponent('furniture-editor', {
     localSofaDirection.applyQuaternion(this.tvArea.object3D.getWorldQuaternion(new THREE.Quaternion()).invert()).normalize();
     const speakerYaw = Math.atan2(-localSofaDirection.z, localSofaDirection.x);
     const tvWidth = tv.collider.maxX - tv.collider.minX;
-    const offsetX = Math.min(0.95, Math.max(0.5, (tvWidth - size.x) * 0.34));
+    const offsetX = Math.max(0.6, tvWidth / 2 + size.x / 2 + 0.12);
     const standTopY = TV_STAND_TOP_Y;
     tv.speakerSurfaceY = standTopY;
     const speakerCenterY = standTopY + speakerHeight / 2;
