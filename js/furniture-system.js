@@ -232,8 +232,84 @@ AFRAME.registerComponent('furniture-editor', {
     }
     this.removeExtractedTriangles(usedTriangles);
     this.createTVArea();
+    this.registerLampu();
     this.updateFurnitureColliders();
     this.furnitureInitialized = true;
+  },
+
+  registerLampu() {
+    const entity = document.getElementById('lampu');
+    if (!entity) return;
+
+    const width = 0.56;
+    const depth = 0.56;
+    const height = 1.968;
+    const position = entity.object3D.position;
+    const rotationY = entity.object3D.rotation.y;
+
+    const collider = {
+      minX: position.x - width / 2 - FURNITURE_CLEARANCE,
+      maxX: position.x + width / 2 + FURNITURE_CLEARANCE,
+      minY: FURNITURE_FLOOR_Y,
+      maxY: FURNITURE_FLOOR_Y + height,
+      minZ: position.z - depth / 2 - FURNITURE_CLEARANCE,
+      maxZ: position.z + depth / 2 + FURNITURE_CLEARANCE,
+      kind: 'furniture',
+      id: 'lampu',
+      itemId: 'lampu',
+      name: 'lampu',
+      source: 'lamp.glb',
+      role: 'lamp'
+    };
+
+    const modelEntity = entity.querySelector('[gltf-model]');
+    const item = {
+      id: 'lampu',
+      label: 'Lampu',
+      role: 'lamp',
+      source: 'lamp.glb',
+      entity,
+      transform: entity,
+      meshes: [],
+      materials: [],
+      position: entity.object3D.position,
+      originalPosition: entity.object3D.position.clone(),
+      width,
+      depth,
+      height,
+      verticalOrigin: 'bottom',
+      baseY: FURNITURE_FLOOR_Y,
+      rotationY,
+      originalRotationY: rotationY,
+      verticalOffset: 0,
+      valid: true,
+      collider,
+      moved: false
+    };
+
+    const updateMaterials = () => {
+      const root = modelEntity?.getObject3D('mesh') || entity.object3D;
+      item.materials = this.collectMaterials(root);
+      const meshes = [];
+      root.traverse(obj => {
+        if (obj.isMesh && obj.el?.id !== 'lampu-hitbox' && obj.parent?.el?.id !== 'lampu-hitbox') {
+          meshes.push(obj);
+        }
+      });
+      item.meshes = meshes;
+    };
+
+    if (modelEntity) {
+      modelEntity.addEventListener('model-loaded', updateMaterials, {once: true});
+      if (modelEntity.getObject3D('mesh')) updateMaterials();
+    } else {
+      updateMaterials();
+    }
+
+    collider.item = item;
+    this.items.push(item);
+    this.shell.colliders.push(collider);
+    if (this.shell.debug) this.shell.addDebugBox(collider, '#42e875', `${collider.name}-debug`);
   },
 
   createTVArea() {
@@ -266,6 +342,10 @@ AFRAME.registerComponent('furniture-editor', {
 
   initializeSpeakers() {
     const template = document.getElementById('speaker-template');
+    if (!template) {
+      this.speakersInitialized = true;
+      return;
+    }
     const modelRoot = template?.getObject3D('mesh');
     if (!template || !modelRoot || this.speakerModelFailed) return;
     if (!this.speakerModelLogged) this.onSpeakerModelLoaded();
@@ -457,6 +537,7 @@ AFRAME.registerComponent('furniture-editor', {
     const materials = [];
     root.traverse(object => {
       if (!object.isMesh) return;
+      if (object.el?.id === 'lampu-hitbox' || object.parent?.el?.id === 'lampu-hitbox') return;
       const list = Array.isArray(object.material) ? object.material : [object.material];
       for (const material of list) {
         if (!material || materials.includes(material)) continue;
@@ -610,10 +691,13 @@ AFRAME.registerComponent('furniture-editor', {
     const targetX = this.cameraPosition.x + this.direction.x * 1.35;
     const targetZ = this.cameraPosition.z + this.direction.z * 1.35;
     const floorHeight = this.getFloorHeight(targetX, targetZ);
+    const candidateY = item.verticalOrigin === 'bottom' || item.role === 'lamp'
+      ? FURNITURE_FLOOR_Y
+      : Math.max(FURNITURE_FLOOR_Y, floorHeight ?? FURNITURE_FLOOR_Y, item.baseY + item.verticalOffset);
     const candidatePose = {
       position: new THREE.Vector3(
         Math.round(targetX / FURNITURE_GRID) * FURNITURE_GRID,
-        Math.max(FURNITURE_FLOOR_Y, floorHeight ?? FURNITURE_FLOOR_Y, item.baseY + item.verticalOffset),
+        candidateY,
         Math.round(targetZ / FURNITURE_GRID) * FURNITURE_GRID
       ),
       yaw: this.getParentWorldYaw(item.transform.object3D) + item.rotationY

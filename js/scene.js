@@ -68,10 +68,14 @@ AFRAME.registerComponent('fps-controls', {
     let lastClickX = 0;
     let lastClickY = 0;
     this.onClick = event => {
-      // Saat dalam Mode Melihat, matikan fungsi kursor klik di halaman secara total
+      // Saat dalam Mode Melihat, matikan fungsi kursor default di halaman
       if (document.pointerLockElement) {
         event.preventDefault();
         event.stopPropagation();
+        const editor = document.querySelector('a-scene')?.components['furniture-editor'];
+        if (editor && (editor.grabbedItem || editor.nearbyItem)) {
+          editor.toggleGrab();
+        }
         return;
       }
       const now = performance.now();

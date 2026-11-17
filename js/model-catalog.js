@@ -13,6 +13,7 @@ function buildModelCatalog(urls) {
     })
     .filter(model => !/^living_room_interior_free(?:\.original)?\.glb$/i.test(model.filename))
     .filter(model => !/\.original\.glb$/i.test(model.filename))
+    .filter(model => !/^lamp\.glb$/i.test(model.filename))
     .sort((left, right) => left.filename.localeCompare(right.filename));
 }
 
@@ -22,7 +23,8 @@ try {
   modelUrls = import.meta.glob([
     '../models/*.glb',
     '!../models/living_room_interior_free*.glb',
-    '!../models/*.original.glb'
+    '!../models/*.original.glb',
+    '!../models/lamp.glb'
   ], {
     eager: true,
     query: '?url',
