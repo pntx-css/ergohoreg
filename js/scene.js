@@ -30,170 +30,10 @@ AFRAME.registerComponent('fps-controls', {
   dependencies: ['room-collision'],
 
   init() {
-    this.keys = new Set();
-    this.touchAxis = {x: 0, y: 0};
-    this.touchPointer = null;
+    this.desktopController = null;
+    this.mobileController = null;
     this.direction = new THREE.Vector3();
     this.camera = document.getElementById('player-camera');
-    this.touchZone = document.getElementById('touch-move');
-
-    // Masuk ke Mode Melihat (kunci pointer penuh via Browser Pointer Lock API)
-    this.enterLookMode = () => {
-      if (document.pointerLockElement) return;
-      const target = this.el.sceneEl?.canvas || document.body;
-      try {
-        const promise = target.requestPointerLock?.() || document.body.requestPointerLock?.();
-        if (promise && typeof promise.catch === 'function') {
-          promise.catch(() => {});
-        }
-      } catch (_) {}
-    };
-
-    // Keluar dari Mode Melihat (masuk ke Mode ESC): kursor dilepas & berfungsi normal
-    this.exitLookMode = () => {
-      if (document.pointerLockElement) {
-        try {
-          document.exitPointerLock?.();
-        } catch (_) {}
-      }
-    };
-
-    // Klik 2 kali untuk masuk ke Mode Melihat
-    this.onDblClick = event => {
-      this.enterLookMode();
-    };
-
-    // Detektor klik ganda cepat (toleransi tap touchpad)
-    let lastClickTime = 0;
-    let lastClickX = 0;
-    let lastClickY = 0;
-    this.onClick = event => {
-      // Saat dalam Mode Melihat, matikan fungsi kursor default di halaman
-      if (document.pointerLockElement) {
-        event.preventDefault();
-        event.stopPropagation();
-        const editor = document.querySelector('a-scene')?.components['furniture-editor'];
-        if (editor && (editor.grabbedItem || editor.nearbyItem)) {
-          editor.toggleGrab();
-        }
-        return;
-      }
-      const now = performance.now();
-      const timeDiff = now - lastClickTime;
-      const dist = Math.hypot(event.clientX - lastClickX, event.clientY - lastClickY);
-      if (timeDiff < 450 && dist < 40) {
-        this.enterLookMode();
-      }
-      lastClickTime = now;
-      lastClickX = event.clientX;
-      lastClickY = event.clientY;
-    };
-
-    // Tombol ESC melepas kursor dan masuk ke Mode ESC
-    this.onKeyDownEsc = event => {
-      if (event.code === 'Escape') {
-        this.exitLookMode();
-      }
-    };
-
-    // Rotasi kamera HANYA berjalan saat Mode Melihat aktif (pointer lock aktif).
-    // Dalam Mode ESC, kursor berfungsi normal dan touchpad TIDAK memutar kamera.
-    this.onMouseMove = event => {
-      if (!document.pointerLockElement) return;
-
-      const movementX = event.movementX || event.mozMovementX || 0;
-      const movementY = event.movementY || event.mozMovementY || 0;
-
-      if (!movementX && !movementY) return;
-
-      const look = this.camera?.components['look-controls'];
-      if (!look || !look.yawObject || !look.pitchObject) return;
-
-      const speed = 0.0022;
-      look.yawObject.rotation.y -= movementX * speed;
-      look.pitchObject.rotation.x -= movementY * speed;
-
-      const maxPitch = Math.PI / 2 - 0.05;
-      look.pitchObject.rotation.x = clamp(look.pitchObject.rotation.x, -maxPitch, maxPitch);
-    };
-
-    // Geser 2 jari pada touchpad (wheel event) saat Mode Melihat
-    this.onWheel = event => {
-      if (!document.pointerLockElement) return;
-      event.preventDefault();
-      const look = this.camera?.components['look-controls'];
-      if (!look || !look.yawObject || !look.pitchObject) return;
-
-      const speed = 0.0018;
-      look.yawObject.rotation.y -= event.deltaX * speed;
-      look.pitchObject.rotation.x -= event.deltaY * speed;
-
-      const maxPitch = Math.PI / 2 - 0.05;
-      look.pitchObject.rotation.x = clamp(look.pitchObject.rotation.x, -maxPitch, maxPitch);
-    };
-
-    this.onKeyDown = event => {
-      const allowed = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
-      if (!allowed.includes(event.code)) return;
-      event.preventDefault();
-      this.keys.add(event.code);
-    };
-    this.onKeyUp = event => this.keys.delete(event.code);
-    this.clearInput = () => {
-      this.keys.clear();
-      this.touchAxis.x = 0;
-      this.touchAxis.y = 0;
-      this.touchPointer = null;
-    };
-    this.onPointerDown = event => {
-      if (event.pointerType === 'mouse') return;
-      event.preventDefault();
-      event.stopPropagation();
-      this.touchPointer = {id: event.pointerId, x: event.clientX, y: event.clientY};
-      this.touchZone.setPointerCapture?.(event.pointerId);
-    };
-    this.onPointerMove = event => {
-      if (!this.touchPointer || event.pointerId !== this.touchPointer.id) return;
-      event.preventDefault();
-      event.stopPropagation();
-      this.touchAxis.x = clamp((event.clientX - this.touchPointer.x) / 70, -1, 1);
-      this.touchAxis.y = clamp((this.touchPointer.y - event.clientY) / 70, -1, 1);
-    };
-    this.onPointerEnd = event => {
-      if (!this.touchPointer || event.pointerId !== this.touchPointer.id) return;
-      this.touchPointer = null;
-      this.touchAxis.x = 0;
-      this.touchAxis.y = 0;
-    };
-
-    window.addEventListener('dblclick', this.onDblClick, {capture: true});
-    window.addEventListener('click', this.onClick, {capture: true});
-    window.addEventListener('keydown', this.onKeyDownEsc, {capture: true});
-    window.addEventListener('mousemove', this.onMouseMove, {capture: true});
-    window.addEventListener('wheel', this.onWheel, {passive: false, capture: true});
-
-    window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('keyup', this.onKeyUp);
-    window.addEventListener('blur', this.clearInput);
-    this.touchZone?.addEventListener('pointerdown', this.onPointerDown);
-    this.touchZone?.addEventListener('pointermove', this.onPointerMove);
-    this.touchZone?.addEventListener('pointerup', this.onPointerEnd);
-    this.touchZone?.addEventListener('pointercancel', this.onPointerEnd);
-  },
-
-  getVRAxis() {
-    if (!this.el.sceneEl.is('vr-mode')) return null;
-    const session = this.el.sceneEl.renderer?.xr?.getSession?.();
-    const source = session?.inputSources?.find(input => input.handedness === 'left' && input.gamepad);
-    if (!source) return null;
-
-    const axes = source.gamepad.axes;
-    const axisX = axes.length >= 4 ? axes[2] : axes[0];
-    const axisY = axes.length >= 4 ? axes[3] : axes[1];
-    return {
-      x: Math.abs(axisX) < 0.18 ? 0 : axisX,
-      y: Math.abs(axisY) < 0.18 ? 0 : -axisY
-    };
   },
 
   tick(time, delta) {
@@ -207,17 +47,22 @@ AFRAME.registerComponent('fps-controls', {
     let strafe = 0;
     let forwardInput = 0;
 
-    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) forwardInput++;
-    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) forwardInput--;
-    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) strafe--;
-    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) strafe++;
+    const activeController = this.desktopController || this.mobileController;
+    const keys = activeController?.getKeys();
+    if (keys?.has('KeyW') || keys?.has('ArrowUp')) forwardInput++;
+    if (keys?.has('KeyS') || keys?.has('ArrowDown')) forwardInput--;
+    if (keys?.has('KeyA') || keys?.has('ArrowLeft')) strafe--;
+    if (keys?.has('KeyD') || keys?.has('ArrowRight')) strafe++;
 
-    if (this.touchPointer) {
-      strafe = this.touchAxis.x;
-      forwardInput = this.touchAxis.y;
+    if (this.mobileController) {
+      const touchAxis = this.mobileController.getTouchAxis();
+      if (touchAxis) {
+        strafe = touchAxis.x;
+        forwardInput = touchAxis.y;
+      }
     }
 
-    const vrAxis = this.getVRAxis();
+    const vrAxis = this.vrController?.getMovementAxis();
     if (vrAxis) {
       strafe = vrAxis.x;
       forwardInput = vrAxis.y;
@@ -244,21 +89,6 @@ AFRAME.registerComponent('fps-controls', {
     }
   },
 
-  remove() {
-    window.removeEventListener('dblclick', this.onDblClick, {capture: true});
-    window.removeEventListener('click', this.onClick, {capture: true});
-    window.removeEventListener('keydown', this.onKeyDownEsc, {capture: true});
-    window.removeEventListener('mousemove', this.onMouseMove, {capture: true});
-    window.removeEventListener('wheel', this.onWheel, {passive: false, capture: true});
-
-    window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('keyup', this.onKeyUp);
-    window.removeEventListener('blur', this.clearInput);
-    this.touchZone?.removeEventListener('pointerdown', this.onPointerDown);
-    this.touchZone?.removeEventListener('pointermove', this.onPointerMove);
-    this.touchZone?.removeEventListener('pointerup', this.onPointerEnd);
-    this.touchZone?.removeEventListener('pointercancel', this.onPointerEnd);
-  }
 });
 
 AFRAME.registerComponent('room-collision', {

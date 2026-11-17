@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noImplicitReturns": true,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "types": ["node"],
+    "typeRoots": ["node_modules/@types"]
+  },
+  "include": ["src/**/*", "index.html"],
+  "exclude": ["node_modules", "dist"]
+}

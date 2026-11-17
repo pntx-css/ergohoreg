@@ -14,5 +14,11 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@types/aframe": "^1.2.10",
+    "@types/node": "^26.6.6",
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2"
   }
 }

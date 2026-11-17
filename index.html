@@ -19,6 +19,7 @@
     <script src="./js/ergonomics.js"></script>
     <script type="module" src="./js/model-catalog.js"></script>
     <script defer src="./js/start-menu.js"></script>
+    <script type="module" src="./src/main.ts"></script>
   </head>
 
   <body class="is-start-menu-open">
@@ -187,6 +188,7 @@
     </section>
 
     <div id="interaction-hint" role="status" hidden></div>
+    <div id="controller-status" role="status" aria-live="polite" hidden></div>
 
     <div id="grab-controls" aria-label="Kontrol furnitur">
       <button id="rotate-left-button" type="button" aria-label="Putar kiri">
@@ -278,15 +280,15 @@
       <a-entity
         id="player-rig"
         position="0 0 0"
-        fps-controls="speed: 1.35"
         room-collision
+        fps-controls="speed: 1.35"
       >
         <!-- Titik referensi dunia: koordinat awal (0.086, 1.620, -0.862) dipetakan ke origin. -->
         <a-entity id="spawn_point" position="0 0 0"></a-entity>
         <a-entity
           id="player-camera"
           camera="fov: 72; near: 0.06; far: 60"
-          look-controls="pointerLockEnabled: false; touchEnabled: true; magicWindowTrackingEnabled: false"
+          look-controls="pointerLockEnabled: false; mouseEnabled: false; touchEnabled: true; magicWindowTrackingEnabled: false"
           spawn-look
           position="0 1.62 0"
           rotation="-5 20 0"
