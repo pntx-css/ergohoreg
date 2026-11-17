@@ -1,5 +1,6 @@
 const AUTO_PLACEMENT_MARGIN = 0.045;
 const AUTO_PLACEMENT_FLOOR_GAP = 0.015;
+const SOFA_SET_FLOOR_GAP = 0.005;
 const AUTO_PLACEMENT_STEP = 0.18;
 
 function classifyAutoModel(filename) {
@@ -10,6 +11,7 @@ function classifyAutoModel(filename) {
       : {type: 'speaker', label: 'Speaker'};
   }
   if (/air purifier|air cleaner|aircleaner|purifier/.test(name)) return {type: 'purifier', label: 'Air Purifier'};
+  if (/sofa set|set sofa|living room set/.test(name)) return {type: 'sofa-set', label: 'Sofa set'};
   if (/sofa|couch|loveseat/.test(name)) return {type: 'sofa', label: 'Sofa'};
   if (/lamp|floor light|standing light/.test(name)) return {type: 'lamp', label: 'Lamp'};
   if (/tv stand|tv bench|tv table|tv console|meja tv/.test(name)) return {type: 'tv-stand', label: 'TV stand'};
@@ -21,7 +23,7 @@ function classifyAutoModel(filename) {
 }
 
 function autoModelPriority(type) {
-  return ({'tv-stand': 0, tv: 1, sofa: 2, 'speaker-pair': 3, speaker: 3, table: 4, cabinet: 5, chair: 6, lamp: 7, purifier: 8, generic: 9})[type] ?? 10;
+  return ({'tv-stand': 0, tv: 1, sofa: 2, 'sofa-set': 2, 'speaker-pair': 3, speaker: 3, table: 4, cabinet: 5, chair: 6, lamp: 7, purifier: 8, generic: 9})[type] ?? 10;
 }
 
 function vectorData(vector, digits = 3) {
@@ -220,6 +222,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       'speaker-pair': {width: 1.45, depth: 0.62, height: 0.82},
       speaker: {width: 0.55, depth: 0.52, height: 0.9},
       sofa: {width: 2.3, depth: 1.2, height: 1.12},
+      'sofa-set': {width: 3.0, depth: 2.7, height: 1.55},
       table: {width: 1.2, depth: 0.82, height: 0.62},
       lamp: {width: 0.48, depth: 0.48, height: 1.72},
       purifier: {width: 0.48, depth: 0.48, height: 1.0},
@@ -264,7 +267,8 @@ AFRAME.registerComponent('auto-furniture-loader', {
   },
 
   getPlacedModel(type) {
-    return this.placedModels.find(item => item.role.type === type) || null;
+    return this.placedModels.find(item => item.role.type === type ||
+      (type === 'sofa' && item.role.type === 'sofa-set')) || null;
   },
 
   boxCenter(box) {
@@ -272,7 +276,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
   },
 
   preferredYaw(item) {
-    if (item.role.type === 'sofa') return Math.PI;
+    if (item.role.type === 'sofa' || item.role.type === 'sofa-set') return Math.PI;
     if (item.role.type === 'tv-stand') return Math.PI / 2;
     if (item.role.type === 'tv' || item.role.type === 'speaker' || item.role.type === 'speaker-pair') return 0;
     if (item.role.type === 'chair') return Math.PI;
@@ -316,6 +320,11 @@ AFRAME.registerComponent('auto-furniture-loader', {
       }
       case 'sofa':
         return new THREE.Vector3(roomCenterX, this.getFloorY(), backZ + size.z / 2 + 0.28);
+      case 'sofa-set': {
+        const tvFront = tvBox ? tvBox.max.z : backZ + 0.6;
+        const viewingClearance = 0.7;
+        return new THREE.Vector3(roomCenterX, this.getFloorY(), tvFront + size.z / 2 + viewingClearance);
+      }
       case 'table': {
         const z = sofaBox ? sofaBox.max.z + size.z / 2 + 0.35 : roomCenterZ - 0.55;
         const x = sofaBox ? this.boxCenter(sofaBox).x : roomCenterX;
@@ -338,11 +347,12 @@ AFRAME.registerComponent('auto-furniture-loader', {
     }
   },
 
-  candidateBox(baseBox, centerX, centerZ, baseY = this.getFloorY()) {
+  candidateBox(baseBox, centerX, centerZ, baseY, item) {
     const center = baseBox.getCenter(new THREE.Vector3());
+    const floorGap = item.role.type === 'sofa-set' ? SOFA_SET_FLOOR_GAP : AUTO_PLACEMENT_FLOOR_GAP;
     const delta = new THREE.Vector3(
       centerX - center.x,
-      baseY + AUTO_PLACEMENT_FLOOR_GAP - baseBox.min.y,
+      baseY + floorGap - baseBox.min.y,
       centerZ - center.z
     );
     return {box: baseBox.clone().translate(delta), delta};
@@ -359,16 +369,21 @@ AFRAME.registerComponent('auto-furniture-loader', {
   isValidCandidate(box, item, ignoreCollider = null) {
     const room = this.getRoom();
     const inside = room.inside;
+    const floorGap = item.role.type === 'sofa-set' ? SOFA_SET_FLOOR_GAP : AUTO_PLACEMENT_FLOOR_GAP;
     if (box.min.x < inside.minX + AUTO_PLACEMENT_MARGIN || box.max.x > inside.maxX - AUTO_PLACEMENT_MARGIN) return false;
     if (box.min.z < inside.minZ + AUTO_PLACEMENT_MARGIN || box.max.z > inside.maxZ - AUTO_PLACEMENT_MARGIN) return false;
-    if (box.min.y < this.getFloorY() + AUTO_PLACEMENT_FLOOR_GAP - 0.002 || box.max.y > room.ceilingY - AUTO_PLACEMENT_MARGIN) return false;
-    return !this.shell.colliders.some(collider => collider !== item.collider && collider !== ignoreCollider && this.collidesWithBox(box, collider));
+    if (box.min.y < this.getFloorY() + floorGap - 0.002 || box.max.y > room.ceilingY - AUTO_PLACEMENT_MARGIN) return false;
+    return !this.shell.colliders.some(collider =>
+      collider !== item.collider &&
+      collider !== ignoreCollider &&
+      collider.itemId !== item.entity.id &&
+      this.collidesWithBox(box, collider));
   },
 
   findNearestFreePosition(baseBox, desiredCenter, item) {
     const room = this.getRoom();
     const test = (x, z) => {
-      const candidate = this.candidateBox(baseBox, x, z, item.baseY);
+      const candidate = this.candidateBox(baseBox, x, z, item.baseY, item);
       return this.isValidCandidate(candidate.box, item) ? candidate : null;
     };
     const direct = test(desiredCenter.x, desiredCenter.z);
@@ -389,6 +404,44 @@ AFRAME.registerComponent('auto-furniture-loader', {
       }
     }
     return null;
+  },
+
+  createSofaSetColliders(entity, descriptor) {
+    const root = entity.getObject3D('mesh');
+    if (!root) throw new Error('Sofa set has no mesh root for collider generation.');
+    this.scene.object3D.updateMatrixWorld(true);
+    const colliders = [];
+
+    root.traverse(object => {
+      if (!object.isMesh || !object.geometry?.attributes?.position) return;
+      const bounds = new THREE.Box3().setFromObject(object);
+      if (bounds.isEmpty()) return;
+      const size = bounds.getSize(new THREE.Vector3());
+      const horizontalSize = Math.max(size.x, size.z);
+      const floorSurface = size.y < 0.035 || (size.y < 0.055 && horizontalSize > 0.35);
+      const substantialFurniture =
+        (size.y >= 0.055 && horizontalSize >= 0.18) ||
+        (size.y >= 0.15 && horizontalSize >= 0.02);
+      if (floorSurface || !substantialFurniture) return;
+
+      const collider = {
+        kind: 'furniture',
+        name: `${entity.id}-part-${colliders.length + 1}`,
+        itemId: entity.id,
+        modelName: descriptor.filename,
+        source: object.name || 'sofa-set-mesh',
+        minX: bounds.min.x,
+        maxX: bounds.max.x,
+        minY: bounds.min.y,
+        maxY: bounds.max.y,
+        minZ: bounds.min.z,
+        maxZ: bounds.max.z
+      };
+      colliders.push(collider);
+    });
+
+    if (!colliders.length) throw new Error('Sofa set did not contain any furniture-sized meshes for collision.');
+    return colliders;
   },
 
   fitInsideRoom(entity) {
@@ -473,7 +526,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
     let desired = this.preferredCenter(item, box);
     const relationalPlacement = ['tv', 'tv-stand', 'speaker', 'speaker-pair'].includes(role.type);
     let placement = relationalPlacement
-      ? this.candidateBox(box, desired.x, desired.z, item.baseY)
+      ? this.candidateBox(box, desired.x, desired.z, item.baseY, item)
       : this.findNearestFreePosition(box, desired, item);
     let crowdScale = 1;
     while (!placement && !relationalPlacement && crowdScale > 0.35) {
@@ -503,7 +556,21 @@ AFRAME.registerComponent('auto-furniture-loader', {
       minZ: item.bounds.min.z,
       maxZ: item.bounds.max.z
     };
-    this.shell.colliders.push(item.collider);
+    item.colliders = role.type === 'sofa-set'
+      ? this.createSofaSetColliders(entity, descriptor)
+      : [item.collider];
+    this.shell.colliders.push(...item.colliders);
+    if (this.shell.debug) {
+      for (const collider of item.colliders) {
+        this.shell.addDebugBox(collider, '#ff9c38', `${collider.name}-debug`);
+      }
+      const panel = document.getElementById('collision-debug-panel');
+      if (panel) {
+        const wallCount = this.shell.colliders.filter(box => box.kind === 'wall').length;
+        const furnitureCount = this.shell.colliders.filter(box => box.kind === 'furniture').length;
+        panel.textContent = `DEBUG COLLISION: ON · Dinding: ${wallCount}/4 · Furnitur: ${furnitureCount}`;
+      }
+    }
     this.placedModels.push(item);
 
     const rotation = entity.object3D.rotation;
@@ -529,6 +596,15 @@ AFRAME.registerComponent('auto-furniture-loader', {
       scale: vectorData(entity.object3D.scale),
       collider: {...item.collider}
     };
+    if (role.type === 'sofa-set') {
+      report.colliders = item.colliders.map(collider => ({
+        name: collider.name,
+        bounds: {
+          min: [collider.minX, collider.minY, collider.minZ].map(value => Number(value.toFixed(3))),
+          max: [collider.maxX, collider.maxY, collider.maxZ].map(value => Number(value.toFixed(3)))
+        }
+      }));
+    }
     console.info('Model Loaded Successfully', {modelName: descriptor.instanceName, path: descriptor.path});
     console.info('Model Name Position Rotation Scale', report);
     if (relocated) {
