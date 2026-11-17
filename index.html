@@ -256,10 +256,12 @@
 
       <a-entity
         id="player-rig"
-        position="1.2 0 1.55"
+        position="0 0 0"
         fps-controls="speed: 1.35"
         room-collision
       >
+        <!-- Titik referensi dunia: koordinat awal (0.086, 1.620, -0.862) dipetakan ke origin. -->
+        <a-entity id="spawn_point" position="0 0 0"></a-entity>
         <a-entity
           id="player-camera"
           camera="fov: 72; near: 0.06; far: 60"

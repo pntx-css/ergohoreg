@@ -108,8 +108,9 @@ AFRAME.registerComponent('auto-furniture-loader', {
     }
 
     const entity = document.createElement('a-entity');
-    entity.id = this.makeEntityId(descriptor.instanceName);
+    entity.id = this.makeEntityId(descriptor);
     entity.classList.add('auto-placed-model');
+    this.setModelIdentity(entity, descriptor);
     entity.object3D.position.set(0, 0, 0);
     entity.object3D.rotation.set(0, 0, 0);
     entity.object3D.scale.set(1, 1, 1);
@@ -157,12 +158,35 @@ AFRAME.registerComponent('auto-furniture-loader', {
     entity.setAttribute('gltf-model', descriptor.url);
   },
 
-  makeEntityId(name) {
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  makeEntityId(descriptor) {
+    const {type} = descriptor.role;
+    if (type === 'tv') return 'tv';
+    if (type === 'tv-stand') return 'meja_tv';
+    // The source is a stereo pair, so each physical speaker needs its own DOM ID.
+    if (type === 'speaker' || type === 'speaker-pair') return descriptor.side === 'right' ? 'speaker_kanan' : 'speaker_kiri';
+
+    const slug = descriptor.instanceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     let id = `auto-model-${slug}`;
     let suffix = 2;
     while (document.getElementById(id)) id = `auto-model-${slug}-${suffix++}`;
     return id;
+  },
+
+  setModelIdentity(entity, descriptor) {
+    const {type} = descriptor.role;
+    if (type === 'tv') {
+      entity.dataset.model = 'tv';
+      entity.dataset.front = 'local +Z (menghadap ke area sofa)';
+      entity.dataset.back = 'local -Z (menghadap dinding belakang)';
+    } else if (type === 'tv-stand') {
+      entity.dataset.model = 'meja_tv';
+      entity.dataset.front = 'local -X (menghadap ke area sofa)';
+      entity.dataset.back = 'local +X (menghadap dinding belakang)';
+    } else if (type === 'speaker' || type === 'speaker-pair') {
+      entity.dataset.model = 'speaker';
+      entity.dataset.front = 'menghadap ke area sofa';
+      entity.dataset.back = 'membelakangi area sofa';
+    }
   },
 
   getModelBox(entity) {
@@ -276,9 +300,17 @@ AFRAME.registerComponent('auto-furniture-loader', {
   },
 
   preferredYaw(item) {
+<<<<<<< HEAD
     if (item.role.type === 'sofa' || item.role.type === 'sofa-set') return Math.PI;
     if (item.role.type === 'tv-stand') return Math.PI / 2;
     if (item.role.type === 'tv' || item.role.type === 'speaker' || item.role.type === 'speaker-pair') return 0;
+=======
+    if (item.role.type === 'sofa') return Math.PI;
+    // Rotate the speaker and TV stand on the horizontal (Y) axis.
+    if (item.role.type === 'tv-stand') return -Math.PI / 2;
+    if (item.role.type === 'speaker' || item.role.type === 'speaker-pair') return -Math.PI / 2;
+    if (item.role.type === 'tv') return 0;
+>>>>>>> c71bd03dfb58516d66d2fb2c2bd41d3df2cb0dd9
     if (item.role.type === 'chair') return Math.PI;
     if (item.role.type === 'cabinet') return -Math.PI / 2;
     return 0;
