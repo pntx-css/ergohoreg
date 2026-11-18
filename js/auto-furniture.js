@@ -4,6 +4,8 @@ const AUTO_PLACEMENT_STEP = 0.18;
 
 function classifyAutoModel(filename) {
   const name = filename.toLowerCase().replace(/[_-]+/g, ' ');
+  if (/\bfloor\b|\blantai\b/.test(name)) return {type: 'floor', label: 'Floor'};
+  if (/\bac\b|air conditioner|air conditioning|aircon/.test(name)) return {type: 'air-conditioner', label: 'Air Conditioner'};
   if (/speaker|soundbar|audio/.test(name)) {
     return /duo|pair|set|twin/.test(name)
       ? {type: 'speaker-pair', label: 'Speaker pair'}
@@ -22,7 +24,7 @@ function classifyAutoModel(filename) {
 }
 
 function autoModelPriority(type) {
-  return ({'tv-stand': 0, tv: 1, sofa: 2, rug: 3, 'speaker-pair': 4, speaker: 4, table: 5, cabinet: 6, chair: 7, lamp: 8, purifier: 9, generic: 10})[type] ?? 11;
+  return ({floor: -1, 'tv-stand': 0, tv: 1, sofa: 2, rug: 3, 'speaker-pair': 4, speaker: 4, table: 5, cabinet: 6, chair: 7, lamp: 8, purifier: 9, generic: 10, 'air-conditioner': 11})[type] ?? 12;
 }
 
 function vectorData(vector, digits = 3) {
@@ -251,6 +253,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       table: {width: 1.2, depth: 0.82, height: 0.62},
       lamp: {width: 0.48, depth: 0.48, height: 1.72},
       purifier: {width: 0.48, depth: 0.48, height: 1.0},
+      'air-conditioner': {width: 1.0, depth: 0.34, height: 0.36},
       cabinet: {width: 1.25, depth: 0.6, height: 1.65},
       chair: {width: 0.82, depth: 0.82, height: 1.05},
       generic: {width: 1.15, depth: 1.15, height: 1.35}
@@ -300,6 +303,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
   },
 
   preferredYaw(item) {
+    if (item.role.type === 'air-conditioner') return Math.PI / 2;
     if (item.role.type === 'sofa') return -Math.PI / 2;
     if (item.role.type === 'rug') return -Math.PI / 2;
     // Rotate the speaker and TV stand on the horizontal (Y) axis.
@@ -394,6 +398,93 @@ AFRAME.registerComponent('auto-furniture-loader', {
     const xOverlap = Math.min(box.max.x, collider.maxX) - Math.max(box.min.x, collider.minX);
     const zOverlap = Math.min(box.max.z, collider.maxZ) - Math.max(box.min.z, collider.minZ);
     return verticalOverlap > 0.02 && xOverlap > 0.025 && zOverlap > 0.025;
+  },
+
+  fitFloorScale(entity, box) {
+    const room = this.getRoom().inside;
+    box.getSize(this.size);
+    if (this.size.x <= 0.00001 || this.size.z <= 0.00001) {
+      throw new Error('Floor GLB must contain a measurable horizontal surface.');
+    }
+    entity.object3D.scale.x *= (room.maxX - room.minX - 0.04) / this.size.x;
+    entity.object3D.scale.z *= (room.maxZ - room.minZ - 0.04) / this.size.z;
+    this.scene.object3D.updateMatrixWorld(true);
+    return this.getModelBox(entity);
+  },
+
+  placeFloorModel(box) {
+    const room = this.getRoom().inside;
+    const center = box.getCenter(new THREE.Vector3());
+    const delta = new THREE.Vector3(
+      (room.minX + room.maxX) / 2 - center.x,
+      0.005 - center.y,
+      (room.minZ + room.maxZ) / 2 - center.z
+    );
+    return {box: box.clone().translate(delta), delta};
+  },
+
+  placeAirConditioner(entity) {
+    const room = this.getRoom().inside;
+    const center = new THREE.Vector3(
+      (room.minX + room.maxX) / 2,
+      2.85,
+      (room.minZ + room.maxZ) / 2
+    );
+    const walls = [
+      {side: 'left', yaw: Math.PI / 2, normal: 'x', direction: 1},
+      {side: 'right', yaw: -Math.PI / 2, normal: 'x', direction: -1},
+      {side: 'back', yaw: 0, normal: 'z', direction: 1},
+      {side: 'front', yaw: Math.PI, normal: 'z', direction: -1}
+    ];
+
+    for (const wall of walls) {
+      entity.object3D.rotation.set(0, wall.yaw, 0);
+      this.scene.object3D.updateMatrixWorld(true);
+      const orientedBox = this.getModelBox(entity);
+      const size = orientedBox.getSize(new THREE.Vector3());
+      const centerAxis = wall.normal === 'x' ? 'z' : 'x';
+      const min = room[`min${centerAxis.toUpperCase()}`];
+      const max = room[`max${centerAxis.toUpperCase()}`];
+      const halfSpan = size[centerAxis] / 2;
+      const candidateCenters = [];
+      for (let offset = 0; offset <= max - min; offset += 0.2) {
+        const offsets = offset === 0 ? [0] : [-offset, offset];
+        for (const value of offsets) {
+          const candidate = center[centerAxis] + value;
+          if (candidate >= min + halfSpan + 0.08 && candidate <= max - halfSpan - 0.08) {
+            candidateCenters.push(candidate);
+          }
+        }
+      }
+
+      for (const wallCenter of candidateCenters) {
+        const boxCenter = orientedBox.getCenter(new THREE.Vector3());
+        const delta = new THREE.Vector3();
+        delta[centerAxis] = wallCenter - boxCenter[centerAxis];
+        delta.y = center.y - boxCenter.y;
+        if (wall.normal === 'x') {
+          const targetX = wall.direction > 0 ? room.minX + 0.02 : room.maxX - 0.02;
+          delta.x = wall.direction > 0 ? targetX - orientedBox.min.x : targetX - orientedBox.max.x;
+        } else {
+          const targetZ = wall.direction > 0 ? room.minZ + 0.02 : room.maxZ - 0.02;
+          delta.z = wall.direction > 0 ? targetZ - orientedBox.min.z : targetZ - orientedBox.max.z;
+        }
+
+        const candidateBox = orientedBox.clone().translate(delta);
+        const withinRoom = candidateBox.min.x >= room.minX && candidateBox.max.x <= room.maxX &&
+          candidateBox.min.z >= room.minZ && candidateBox.max.z <= room.maxZ &&
+          candidateBox.min.y >= this.getRoom().floorY && candidateBox.max.y <= this.getRoom().ceilingY;
+        if (!withinRoom) continue;
+
+        const overlaps = this.shell.colliders.filter(collider => this.collidesWithBox(candidateBox, collider));
+        if (overlaps.length) continue;
+        entity.object3D.position.add(delta);
+        this.scene.object3D.updateMatrixWorld(true);
+        return {box: this.getModelBox(entity), wall: wall.side};
+      }
+    }
+
+    throw new Error('No wall position is clear of room walls and furniture.');
   },
 
   isValidCandidate(box, item, ignoreCollider = null) {
@@ -505,20 +596,37 @@ AFRAME.registerComponent('auto-furniture-loader', {
     };
     let box = this.getModelBox(entity);
     const rawSize = box.getSize(new THREE.Vector3());
-    box = this.fitModelScale(entity, item.role, box);
-    const yaw = this.preferredYaw(item);
-    entity.object3D.rotation.order = uprightX ? 'YXZ' : 'XYZ';
-    entity.object3D.rotation.set(uprightX, yaw, 0);
-    this.scene.object3D.updateMatrixWorld(true);
-    box = this.fitInsideRoom(entity);
+    if (item.role.type === 'floor') {
+      entity.object3D.rotation.set(0, 0, 0);
+      box = this.fitFloorScale(entity, box);
+    } else {
+      box = this.fitModelScale(entity, item.role, box);
+      const yaw = this.preferredYaw(item);
+      entity.object3D.rotation.order = uprightX ? 'YXZ' : 'XYZ';
+      entity.object3D.rotation.set(uprightX, yaw, 0);
+      this.scene.object3D.updateMatrixWorld(true);
+      if (item.role.type !== 'air-conditioner') box = this.fitInsideRoom(entity);
+    }
 
     let desired = this.preferredCenter(item, box);
     const relationalPlacement = ['tv', 'tv-stand', 'speaker', 'speaker-pair', 'sofa', 'rug'].includes(role.type);
-    let placement = relationalPlacement
-      ? this.candidateBox(box, desired.x, desired.z, item.baseY, item.floorGap)
-      : this.findNearestFreePosition(box, desired, item);
+    let placement;
+    let mountedWall = null;
+    if (item.role.type === 'floor') placement = this.placeFloorModel(box);
+    else if (item.role.type === 'air-conditioner') {
+      const mounted = this.placeAirConditioner(entity);
+      box = mounted.box;
+      mountedWall = mounted.wall;
+      desired = this.boxCenter(box);
+      entity.dataset.mountedWall = mountedWall;
+      placement = {box, delta: new THREE.Vector3()};
+    } else {
+      placement = relationalPlacement
+        ? this.candidateBox(box, desired.x, desired.z, item.baseY, item.floorGap)
+        : this.findNearestFreePosition(box, desired, item);
+    }
     let crowdScale = 1;
-    while (!placement && !relationalPlacement && crowdScale > 0.35) {
+    while (!placement && !relationalPlacement && item.role.type !== 'air-conditioner' && crowdScale > 0.35) {
       crowdScale *= 0.85;
       entity.object3D.scale.multiplyScalar(0.85);
       box = this.fitInsideRoom(entity);
@@ -533,7 +641,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
     item.bounds.getSize(this.size);
     const finalCenter = this.boxCenter(item.bounds);
     const relocated = Math.hypot(finalCenter.x - desired.x, finalCenter.z - desired.z) > 0.08;
-    item.collider = {
+    item.collider = item.role.type === 'floor' || item.role.type === 'air-conditioner' ? null : {
       kind: 'auto-model',
       name: entity.id,
       modelName: descriptor.filename,
@@ -545,8 +653,15 @@ AFRAME.registerComponent('auto-furniture-loader', {
       minZ: item.bounds.min.z,
       maxZ: item.bounds.max.z
     };
-    if (role.type !== 'rug') this.shell.colliders.push(item.collider);
+    if (item.collider && role.type !== 'rug') this.shell.colliders.push(item.collider);
     this.placedModels.push(item);
+
+    if (item.role.type === 'floor') {
+      const oldGround = document.getElementById('ground');
+      if (oldGround) oldGround.object3D.visible = false;
+      const editor = this.scene.components['furniture-editor'];
+      if (editor) editor.floorObject = entity;
+    }
 
     const rotation = entity.object3D.rotation;
     const report = {
@@ -569,7 +684,8 @@ AFRAME.registerComponent('auto-furniture-loader', {
         z: Number(THREE.MathUtils.radToDeg(rotation.z).toFixed(1))
       },
       scale: vectorData(entity.object3D.scale),
-      collider: {...item.collider}
+      collider: item.collider ? {...item.collider} : null,
+      mountedWall
     };
     console.info('Model Loaded Successfully', {modelName: descriptor.instanceName, path: descriptor.path});
     console.info('Model Name Position Rotation Scale', report);
@@ -580,7 +696,22 @@ AFRAME.registerComponent('auto-furniture-loader', {
         finalCenter: vectorData(finalCenter)
       });
     }
-    if (!this.isValidCandidate(item.bounds, item)) {
+    if (item.role.type === 'air-conditioner') {
+      const overlaps = this.shell.colliders
+        .filter(collider => this.collidesWithBox(item.bounds, collider))
+        .map(collider => ({name: collider.name, kind: collider.kind}));
+      if (overlaps.length) {
+        console.warn('[Models] Air conditioner intersects a wall or furniture.', {
+          modelName: descriptor.instanceName,
+          overlaps
+        });
+      } else {
+        console.info('[Models] Air conditioner wall and furniture clearance verified.', {
+          modelName: descriptor.instanceName,
+          wall: mountedWall
+        });
+      }
+    } else if (item.role.type !== 'floor' && !this.isValidCandidate(item.bounds, item)) {
       console.warn('[Models] Collision validation failed after placement.', {modelName: descriptor.instanceName, path: descriptor.path, bounds: item.bounds.clone()});
     }
   },
