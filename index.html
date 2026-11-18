@@ -225,10 +225,6 @@
           id="living-room-model"
           src="./models/living_room_interior_free.glb"
         ></a-asset-item>
-        <a-asset-item
-          id="lamp-model"
-          src="./models/lamp.glb"
-        ></a-asset-item>
       </a-assets>
 
       <a-sky color="#a1b3b7"></a-sky>
@@ -250,23 +246,6 @@
         rotation="0 0 0"
         scale="0.2 0.2 0.2"
       >
-      </a-entity>
-
-      <a-entity
-        id="lampu"
-        class="furniture-grabbable"
-        position="1.2 0 -1.2"
-        rotation="0 0 0"
-      >
-        <a-entity gltf-model="#lamp-model"></a-entity>
-        <a-box
-          id="lampu-hitbox"
-          position="0 0.984 0"
-          width="0.56"
-          height="1.968"
-          depth="0.56"
-          material="color: #42e875; wireframe: true; opacity: 0.95"
-        ></a-box>
       </a-entity>
 
       <a-entity
