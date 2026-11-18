@@ -233,6 +233,8 @@ AFRAME.registerComponent('furniture-editor', {
     this.removeExtractedTriangles(usedTriangles);
     this.createTVArea();
     this.registerLampu();
+    this.registerModelCollider('TELEPHONE', 'telephone_on_a_table.glb');
+    this.registerModelCollider('MEJA', 'coffee_table_-_living_room.glb');
     this.updateFurnitureColliders();
     this.furnitureInitialized = true;
   },
@@ -310,6 +312,58 @@ AFRAME.registerComponent('furniture-editor', {
     this.items.push(item);
     this.shell.colliders.push(collider);
     if (this.shell.debug) this.shell.addDebugBox(collider, '#42e875', `${collider.name}-debug`);
+  },
+
+  registerModelCollider(entityId, source) {
+    const entity = document.getElementById(entityId);
+    if (!entity) return;
+
+    const registerCollider = () => {
+      if (this.shell.colliders.some(collider => collider.id === entityId)) return;
+      const model = entity.getObject3D('mesh');
+      if (!model) {
+        console.error(`[LivingRoom] ${entityId} model loaded without a mesh; collision was not registered.`);
+        return;
+      }
+
+      this.scene.object3D.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(model);
+      if (bounds.isEmpty()) {
+        console.error(`[LivingRoom] ${entityId} model has empty bounds; collision was not registered.`);
+        return;
+      }
+
+      const collider = {
+        minX: bounds.min.x - FURNITURE_CLEARANCE,
+        maxX: bounds.max.x + FURNITURE_CLEARANCE,
+        minY: bounds.min.y,
+        maxY: bounds.max.y,
+        minZ: bounds.min.z - FURNITURE_CLEARANCE,
+        maxZ: bounds.max.z + FURNITURE_CLEARANCE,
+        kind: 'furniture',
+        id: entityId,
+        name: entityId,
+        source,
+        role: 'furniture'
+      };
+      this.shell.colliders.push(collider);
+      if (this.shell.debug) this.shell.addDebugBox(collider, '#ff9c38', `${entityId}-debug`);
+      console.info('[LivingRoom] Scene model collision registered.', {
+        id: entityId,
+        bounds: {
+          min: bounds.min.toArray(),
+          max: bounds.max.toArray()
+        }
+      });
+    };
+
+    if (entity.getObject3D('mesh')) registerCollider();
+    else {
+      entity.addEventListener('model-loaded', registerCollider, {once: true});
+      entity.addEventListener('model-error', event => {
+        console.error(`[LivingRoom] ${entityId} model failed to load; collision was not registered.`, event.detail);
+      }, {once: true});
+    }
   },
 
   createTVArea() {

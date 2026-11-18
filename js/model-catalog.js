@@ -1,3 +1,6 @@
+import telephoneModelUrl from '../models/telephone_on_a_table.glb?url';
+import coffeeTableModelUrl from '../models/coffee_table_-_living_room.glb?url';
+
 function publishModelCatalog(catalog) {
   window.LivingRoomModelCatalog = catalog;
   window.LivingRoomModelCatalogReady = true;
@@ -14,6 +17,8 @@ function buildModelCatalog(urls) {
     .filter(model => !/^living_room_interior_free(?:\.original)?\.glb$/i.test(model.filename))
     .filter(model => !/\.original\.glb$/i.test(model.filename))
     .filter(model => !/^lamp\.glb$/i.test(model.filename))
+    .filter(model => !/^telephone_on_a_table\.glb$/i.test(model.filename))
+    .filter(model => !/^coffee_table_-_living_room\.glb$/i.test(model.filename))
     .sort((left, right) => left.filename.localeCompare(right.filename));
 }
 
@@ -24,7 +29,9 @@ try {
     '../models/*.glb',
     '!../models/living_room_interior_free*.glb',
     '!../models/*.original.glb',
-    '!../models/lamp.glb'
+    '!../models/lamp.glb',
+    '!../models/telephone_on_a_table.glb',
+    '!../models/coffee_table_-_living_room.glb'
   ], {
     eager: true,
     query: '?url',
@@ -35,6 +42,12 @@ try {
 }
 
 export const catalog = buildModelCatalog(modelUrls);
+const telephoneEntity = document.getElementById('TELEPHONE');
+if (telephoneEntity) telephoneEntity.setAttribute('gltf-model', telephoneModelUrl);
+else console.error('[Models] The #TELEPHONE entity is missing.');
+const coffeeTableEntity = document.getElementById('MEJA');
+if (coffeeTableEntity) coffeeTableEntity.setAttribute('gltf-model', coffeeTableModelUrl);
+else console.error('[Models] The #MEJA entity is missing.');
 publishModelCatalog(catalog);
 
 if (import.meta.hot) {
