@@ -6,6 +6,7 @@ function classifyAutoModel(filename) {
   const name = filename.toLowerCase().replace(/[_-]+/g, ' ');
   if (/\bfloor\b|\blantai\b/.test(name)) return {type: 'floor', label: 'Floor'};
   if (/\bac\b|air conditioner|air conditioning|aircon/.test(name)) return {type: 'air-conditioner', label: 'Air Conditioner'};
+  if (/ceiling.?(lamp|light)|chandelier|pendant|hanging|plafon|\blampu\b/.test(name)) return {type: 'ceiling-lamp', label: 'Ceiling Lamp'};
   if (/door|pintu/.test(name)) return {type: 'door', label: 'Door'};
   if (/speaker|soundbar|audio/.test(name)) {
     return /duo|pair|set|twin/.test(name)
@@ -25,7 +26,7 @@ function classifyAutoModel(filename) {
 }
 
 function autoModelPriority(type) {
-  return ({floor: -1, 'tv-stand': 0, tv: 1, sofa: 2, rug: 3, 'speaker-pair': 4, speaker: 4, table: 5, cabinet: 6, chair: 7, lamp: 8, purifier: 9, door: 10, generic: 11, 'air-conditioner': 12})[type] ?? 13;
+  return ({floor: -1, 'tv-stand': 0, tv: 1, sofa: 2, rug: 3, 'speaker-pair': 4, speaker: 4, table: 5, cabinet: 6, chair: 7, lamp: 8, purifier: 9, door: 10, generic: 11, 'air-conditioner': 12, 'ceiling-lamp': 13})[type] ?? 14;
 }
 
 function vectorData(vector, digits = 3) {
@@ -167,6 +168,8 @@ AFRAME.registerComponent('auto-furniture-loader', {
     if (type === 'sofa') return 'sofa';
     if (type === 'rug') return 'karpet';
     if (type === 'door') return 'pintu';
+    if (type === 'ceiling-lamp') return 'lampugantung';
+    if (type === 'air-conditioner') return 'ac';
     // The source is a stereo pair, so each physical speaker needs its own DOM ID.
     if (type === 'speaker' || type === 'speaker-pair') return descriptor.side === 'right' ? 'speaker_kanan' : 'speaker_kiri';
 
@@ -255,6 +258,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       door: {width: 1.18, depth: 0.34, height: 2.3},
       table: {width: 1.2, depth: 0.82, height: 0.62},
       lamp: {width: 0.48, depth: 0.48, height: 1.72},
+      'ceiling-lamp': {width: 1.55, depth: 1.55, height: 1.1},
       purifier: {width: 0.48, depth: 0.48, height: 1.0},
       'air-conditioner': {width: 1.0, depth: 0.34, height: 0.36},
       cabinet: {width: 1.25, depth: 0.6, height: 1.65},
@@ -497,6 +501,65 @@ AFRAME.registerComponent('auto-furniture-loader', {
     throw new Error('No wall position is clear of room walls and furniture.');
   },
 
+  placeCeilingLamp(entity, box) {
+    const room = this.getRoom();
+    const inside = room.inside;
+    const center = box.getCenter(new THREE.Vector3());
+    const delta = new THREE.Vector3(
+      (inside.minX + inside.maxX) / 2 - center.x,
+      room.ceilingY - 0.035 - box.max.y,
+      (inside.minZ + inside.maxZ) / 2 - center.z
+    );
+    const candidateBox = box.clone().translate(delta);
+    const penetratesCeiling = candidateBox.max.y > room.ceilingY - 0.02;
+    const penetratesWallBounds = candidateBox.min.x < inside.minX + 0.015 ||
+      candidateBox.max.x > inside.maxX - 0.015 ||
+      candidateBox.min.z < inside.minZ + 0.015 ||
+      candidateBox.max.z > inside.maxZ - 0.015;
+    const overlaps = this.shell.colliders
+      .filter(collider => this.collidesWithBox(candidateBox, collider))
+      .map(collider => ({name: collider.name, kind: collider.kind}));
+    if (penetratesCeiling || penetratesWallBounds || overlaps.length || candidateBox.min.y < 2.1) {
+      console.warn('[Models] Ceiling lamp placement intersects the ceiling, a wall, or furniture.', {
+        modelName: entity.id,
+        penetratesCeiling,
+        penetratesWallBounds,
+        overlaps,
+        bounds: candidateBox
+      });
+      throw new Error('Ceiling lamp has no safe centered ceiling placement.');
+    }
+
+    entity.object3D.position.add(delta);
+    this.scene.object3D.updateMatrixWorld(true);
+    return {box: this.getModelBox(entity), ceilingY: room.ceilingY};
+  },
+
+  updateCeilingLampLighting(box) {
+    const light = document.getElementById('room-light-ceiling-center');
+    if (!light) {
+      console.error('[Lighting] The ceiling lamp was loaded, but its point light is missing.');
+      return;
+    }
+    const center = box.getCenter(new THREE.Vector3());
+    const lightY = Math.min(box.max.y - 0.2, box.min.y + 0.28);
+    light.setAttribute('position', `${center.x} ${lightY} ${center.z}`);
+    light.setAttribute('light', {
+      type: 'point',
+      color: '#ffddb3',
+      intensity: 2.4,
+      distance: 7,
+      decay: 2,
+      castShadow: false
+    });
+    console.info('[Lighting] Warm ceiling-lamp lighting positioned.', {
+      position: vectorData(new THREE.Vector3(center.x, lightY, center.z)),
+      color: '#ffddb3',
+      intensity: 2.4,
+      distance: 7
+    });
+  },
+
   isValidCandidate(box, item, ignoreCollider = null) {
     const room = this.getRoom();
     const inside = room.inside;
@@ -632,6 +695,12 @@ AFRAME.registerComponent('auto-furniture-loader', {
       desired = this.boxCenter(box);
       entity.dataset.mountedWall = mountedWall;
       placement = {box, delta: new THREE.Vector3()};
+    } else if (item.role.type === 'ceiling-lamp') {
+      const mounted = this.placeCeilingLamp(entity, box);
+      box = mounted.box;
+      desired = this.boxCenter(box);
+      entity.dataset.mountedSurface = 'ceiling';
+      placement = {box, delta: new THREE.Vector3()};
     } else {
       placement = relationalPlacement
         ? this.candidateBox(box, desired.x, desired.z, item.baseY, item.floorGap)
@@ -653,7 +722,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
     item.bounds.getSize(this.size);
     const finalCenter = this.boxCenter(item.bounds);
     const relocated = Math.hypot(finalCenter.x - desired.x, finalCenter.z - desired.z) > 0.08;
-    item.collider = item.role.type === 'floor' || item.role.type === 'air-conditioner' ? null : {
+    item.collider = ['floor', 'air-conditioner', 'ceiling-lamp'].includes(item.role.type) ? null : {
       kind: 'auto-model',
       name: entity.id,
       modelName: descriptor.filename,
@@ -674,6 +743,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       const editor = this.scene.components['furniture-editor'];
       if (editor) editor.floorObject = entity;
     }
+    if (item.role.type === 'ceiling-lamp') this.updateCeilingLampLighting(item.bounds);
 
     const rotation = entity.object3D.rotation;
     const report = {
@@ -697,7 +767,8 @@ AFRAME.registerComponent('auto-furniture-loader', {
       },
       scale: vectorData(entity.object3D.scale),
       collider: item.collider ? {...item.collider} : null,
-      mountedWall
+      mountedWall,
+      mountedSurface: item.role.type === 'ceiling-lamp' ? 'ceiling' : null
     };
     console.info('Model Loaded Successfully', {modelName: descriptor.instanceName, path: descriptor.path});
     console.info('Model Name Position Rotation Scale', report);
@@ -723,6 +794,14 @@ AFRAME.registerComponent('auto-furniture-loader', {
           wall: mountedWall
         });
       }
+    } else if (item.role.type === 'ceiling-lamp') {
+      console.info('[Models] Ceiling lamp ceiling and furniture clearance verified.', {
+        modelName: descriptor.instanceName,
+        bounds: {
+          min: vectorData(item.bounds.min),
+          max: vectorData(item.bounds.max)
+        }
+      });
     } else if (item.role.type !== 'floor' && !this.isValidCandidate(item.bounds, item)) {
       console.warn('[Models] Collision validation failed after placement.', {modelName: descriptor.instanceName, path: descriptor.path, bounds: item.bounds.clone()});
     }
