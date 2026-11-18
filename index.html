@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="./css/style.css" />
 
     <script src="./vendor/aframe-1.7.1.min.js"></script>
+    <script src="./js/lighting.js"></script>
     <script src="./js/scene.js"></script>
     <script src="./js/auto-furniture.js"></script>
     <script src="./js/furniture-system.js"></script>
@@ -208,6 +209,7 @@
 
     <a-scene
       room-lighting
+      room-point-lighting
       room-shell
       furniture-editor
       ergonomics-evaluator
@@ -230,16 +232,6 @@
       </a-assets>
 
       <a-sky color="#a1b3b7"></a-sky>
-
-      <a-entity
-        light="type: ambient; color: #fff8eb; intensity: 1.1"
-      ></a-entity>
-
-      <a-entity
-        light="type: directional; color: #fff1d8; intensity: 1.7; castShadow: false"
-        position="1 4 -2"
-      >
-      </a-entity>
 
       <a-plane
         id="ground"
