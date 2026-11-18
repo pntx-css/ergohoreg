@@ -11,6 +11,7 @@ function classifyAutoModel(filename) {
   }
   if (/air purifier|air cleaner|aircleaner|purifier/.test(name)) return {type: 'purifier', label: 'Air Purifier'};
   if (/sofa|couch|loveseat/.test(name)) return {type: 'sofa', label: 'Sofa'};
+  if (/rug|carpet/.test(name)) return {type: 'rug', label: 'Rug'};
   if (/lamp|floor light|standing light/.test(name)) return {type: 'lamp', label: 'Lamp'};
   if (/tv stand|tv bench|tv table|tv console|meja tv/.test(name)) return {type: 'tv-stand', label: 'TV stand'};
   if (/table|meja|coffee table/.test(name)) return {type: 'table', label: 'Table'};
@@ -21,7 +22,7 @@ function classifyAutoModel(filename) {
 }
 
 function autoModelPriority(type) {
-  return ({'tv-stand': 0, tv: 1, sofa: 2, 'speaker-pair': 3, speaker: 3, table: 4, cabinet: 5, chair: 6, lamp: 7, purifier: 8, generic: 9})[type] ?? 10;
+  return ({'tv-stand': 0, tv: 1, sofa: 2, rug: 3, 'speaker-pair': 4, speaker: 4, table: 5, cabinet: 6, chair: 7, lamp: 8, purifier: 9, generic: 10})[type] ?? 11;
 }
 
 function vectorData(vector, digits = 3) {
@@ -160,6 +161,8 @@ AFRAME.registerComponent('auto-furniture-loader', {
     const {type} = descriptor.role;
     if (type === 'tv') return 'tv';
     if (type === 'tv-stand') return 'meja_tv';
+    if (type === 'sofa') return 'sofa';
+    if (type === 'rug') return 'boho_rug';
     // The source is a stereo pair, so each physical speaker needs its own DOM ID.
     if (type === 'speaker' || type === 'speaker-pair') return descriptor.side === 'right' ? 'speaker_kanan' : 'speaker_kiri';
 
@@ -244,6 +247,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       'speaker-pair': {width: 1.45, depth: 0.62, height: 0.82},
       speaker: {width: 0.55, depth: 0.52, height: 0.9},
       sofa: {width: 2.3, depth: 1.2, height: 1.12},
+      rug: {width: 10 / 3, depth: 34 / 15, height: 0.06},
       table: {width: 1.2, depth: 0.82, height: 0.62},
       lamp: {width: 0.48, depth: 0.48, height: 1.72},
       purifier: {width: 0.48, depth: 0.48, height: 1.0},
@@ -296,7 +300,8 @@ AFRAME.registerComponent('auto-furniture-loader', {
   },
 
   preferredYaw(item) {
-    if (item.role.type === 'sofa') return Math.PI;
+    if (item.role.type === 'sofa') return -Math.PI / 2;
+    if (item.role.type === 'rug') return -Math.PI / 2;
     // Rotate the speaker and TV stand on the horizontal (Y) axis.
     if (item.role.type === 'tv-stand') return -Math.PI / 2;
     if (item.role.type === 'speaker' || item.role.type === 'speaker-pair') return -Math.PI / 2;
@@ -341,7 +346,16 @@ AFRAME.registerComponent('auto-furniture-loader', {
         return new THREE.Vector3(x, this.getFloorY(), tvCenter.z);
       }
       case 'sofa':
-        return new THREE.Vector3(roomCenterX, this.getFloorY(), backZ + size.z / 2 + 0.28);
+        return new THREE.Vector3(0.128, this.getFloorY(), -0.179);
+      case 'rug': {
+        const sofaCenter = sofaBox ? this.boxCenter(sofaBox) : new THREE.Vector3(0.128, this.getFloorY(), -0.179);
+        const tvStandCenter = tvStand ? this.boxCenter(tvStand.bounds) : new THREE.Vector3(roomCenterX, this.getFloorY(), backZ + size.z / 2 + 0.08);
+        return new THREE.Vector3(
+          (sofaCenter.x + tvStandCenter.x) / 2,
+          this.getFloorY(),
+          (sofaCenter.z + tvStandCenter.z) / 2
+        );
+      }
       case 'table': {
         const z = sofaBox ? sofaBox.max.z + size.z / 2 + 0.35 : roomCenterZ - 0.55;
         const x = sofaBox ? this.boxCenter(sofaBox).x : roomCenterX;
@@ -364,11 +378,11 @@ AFRAME.registerComponent('auto-furniture-loader', {
     }
   },
 
-  candidateBox(baseBox, centerX, centerZ, baseY = this.getFloorY()) {
+  candidateBox(baseBox, centerX, centerZ, baseY = this.getFloorY(), floorGap = AUTO_PLACEMENT_FLOOR_GAP) {
     const center = baseBox.getCenter(new THREE.Vector3());
     const delta = new THREE.Vector3(
       centerX - center.x,
-      baseY + AUTO_PLACEMENT_FLOOR_GAP - baseBox.min.y,
+      baseY + floorGap - baseBox.min.y,
       centerZ - center.z
     );
     return {box: baseBox.clone().translate(delta), delta};
@@ -387,14 +401,15 @@ AFRAME.registerComponent('auto-furniture-loader', {
     const inside = room.inside;
     if (box.min.x < inside.minX + AUTO_PLACEMENT_MARGIN || box.max.x > inside.maxX - AUTO_PLACEMENT_MARGIN) return false;
     if (box.min.z < inside.minZ + AUTO_PLACEMENT_MARGIN || box.max.z > inside.maxZ - AUTO_PLACEMENT_MARGIN) return false;
-    if (box.min.y < this.getFloorY() + AUTO_PLACEMENT_FLOOR_GAP - 0.002 || box.max.y > room.ceilingY - AUTO_PLACEMENT_MARGIN) return false;
+    const floorGap = item.floorGap ?? AUTO_PLACEMENT_FLOOR_GAP;
+    if (box.min.y < this.getFloorY() + floorGap - 0.002 || box.max.y > room.ceilingY - AUTO_PLACEMENT_MARGIN) return false;
     return !this.shell.colliders.some(collider => collider !== item.collider && collider !== ignoreCollider && this.collidesWithBox(box, collider));
   },
 
   findNearestFreePosition(baseBox, desiredCenter, item) {
     const room = this.getRoom();
     const test = (x, z) => {
-      const candidate = this.candidateBox(baseBox, x, z, item.baseY);
+      const candidate = this.candidateBox(baseBox, x, z, item.baseY, item.floorGap);
       return this.isValidCandidate(candidate.box, item) ? candidate : null;
     };
     const direct = test(desiredCenter.x, desiredCenter.z);
@@ -485,7 +500,8 @@ AFRAME.registerComponent('auto-furniture-loader', {
       side: descriptor.side,
       bounds: null,
       collider: null,
-      baseY: tvStand ? tvStand.bounds.max.y : this.getFloorY()
+      baseY: role.type === 'tv' && tvStand ? tvStand.bounds.max.y : this.getFloorY(),
+      floorGap: role.type === 'rug' ? 0 : undefined
     };
     let box = this.getModelBox(entity);
     const rawSize = box.getSize(new THREE.Vector3());
@@ -497,9 +513,9 @@ AFRAME.registerComponent('auto-furniture-loader', {
     box = this.fitInsideRoom(entity);
 
     let desired = this.preferredCenter(item, box);
-    const relationalPlacement = ['tv', 'tv-stand', 'speaker', 'speaker-pair'].includes(role.type);
+    const relationalPlacement = ['tv', 'tv-stand', 'speaker', 'speaker-pair', 'sofa', 'rug'].includes(role.type);
     let placement = relationalPlacement
-      ? this.candidateBox(box, desired.x, desired.z, item.baseY)
+      ? this.candidateBox(box, desired.x, desired.z, item.baseY, item.floorGap)
       : this.findNearestFreePosition(box, desired, item);
     let crowdScale = 1;
     while (!placement && !relationalPlacement && crowdScale > 0.35) {
@@ -529,7 +545,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       minZ: item.bounds.min.z,
       maxZ: item.bounds.max.z
     };
-    this.shell.colliders.push(item.collider);
+    if (role.type !== 'rug') this.shell.colliders.push(item.collider);
     this.placedModels.push(item);
 
     const rotation = entity.object3D.rotation;
