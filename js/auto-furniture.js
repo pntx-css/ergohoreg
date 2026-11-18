@@ -255,7 +255,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       speaker: {width: 0.55, depth: 0.52, height: 0.9},
       sofa: {width: 2.3, depth: 1.2, height: 1.12},
       rug: {width: 10 / 3, depth: 34 / 15, height: 0.06},
-      door: {width: 1.05, depth: 0.3, height: 1.8},
+      door: {width: 1.18, depth: 0.34, height: 2.3},
       table: {width: 1.2, depth: 0.82, height: 0.62},
       lamp: {width: 0.48, depth: 0.48, height: 1.72},
       'ceiling-lamp': {width: 1.55, depth: 1.55, height: 1.1},
@@ -362,7 +362,8 @@ AFRAME.registerComponent('auto-furniture-loader', {
       case 'door': {
         const center = box.getCenter(new THREE.Vector3());
         const wallX = room.inside.maxX;
-        return new THREE.Vector3(wallX - box.max.x + center.x, this.getFloorY(), 1.339 + center.z);
+        const thickness = box.max.x - box.min.x;
+        return new THREE.Vector3(wallX + thickness * 0.63 - box.max.x + center.x, this.getFloorY(), 1.139 + center.z);
       }
       case 'rug': {
         const sofaCenter = sofaBox ? this.boxCenter(sofaBox) : new THREE.Vector3(0.128, this.getFloorY(), -0.179);
