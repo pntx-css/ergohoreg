@@ -14,6 +14,7 @@
 
     <script src="./vendor/aframe-1.7.1.min.js"></script>
     <script src="./js/lighting.js"></script>
+    <script src="./js/hitbox-visuals.js"></script>
     <script src="./js/scene.js"></script>
     <script src="./js/auto-furniture.js"></script>
     <script src="./js/furniture-system.js"></script>
@@ -210,15 +211,17 @@
     <a-scene
       room-lighting
       room-point-lighting
+      model-hitbox-visuals
+      keyboard-shortcuts="enterVR: false; exitVR: true"
       room-shell
       furniture-editor
       ergonomics-evaluator
       auto-furniture-loader
-      background="color: #a1b3b7"
+      background="color: #11171a"
       loading-screen="enabled: false"
       vr-mode-ui="enabled: true"
       webxr="referenceSpaceType: local-floor; optionalFeatures: local-floor, bounded-floor"
-      renderer="colorManagement: true; toneMapping: ACESFilmic; exposure: 1"
+      renderer="colorManagement: true; toneMapping: ACESFilmic; exposure: 0.8"
     >
       <a-assets timeout="60000">
         <a-asset-item
@@ -227,8 +230,16 @@
         ></a-asset-item>
       </a-assets>
 
-      <a-sky color="#a1b3b7"></a-sky>
+      <a-sky color="#11171a"></a-sky>
 
+      <a-entity
+        id="room-light-door"
+        light="type: point; color: #fff1d8; intensity: 0.8; distance: 5; decay: 2; castShadow: false"
+      ></a-entity>
+      <a-entity
+        id="room-light-hanging-lamp"
+        light="type: point; color: #ffddb3; intensity: 1.0; distance: 6; decay: 2; castShadow: false"
+      ></a-entity>
       <a-plane
         id="ground"
         position="0 -0.035 -0.37"
