@@ -115,6 +115,9 @@
     <div id="touch-move" aria-hidden="true"></div>
     <div id="crosshair" aria-hidden="true"></div>
     <div id="collision-debug-panel" aria-live="polite" hidden></div>
+    <p id="mission-text" role="status" aria-live="polite">
+      Misi 1: Cari saklar lampu dan nyalakan lampu ruangan.
+    </p>
 
     <div
       id="position-coordinates"
@@ -147,47 +150,63 @@
 
     <section
       id="ergonomics-panel"
-      aria-live="polite"
+      aria-live="off"
       aria-label="Nilai ergonomi ruangan"
     >
       <h1>Ergonomi Ruang</h1>
 
       <div class="metric-row" data-metric="viewingDistance">
         <span>Viewing Distance</span>
-        <strong data-value="viewingDistance">70%</strong>
-        <div class="metric-track"><i data-bar="viewingDistance"></i></div>
+        <strong data-value="viewingDistance">40%</strong>
+        <div class="metric-track" role="progressbar" aria-label="Viewing Distance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="40"><i data-bar="viewingDistance"></i></div>
       </div>
 
       <div class="metric-row" data-metric="noiseControl">
         <span>Noise Control</span>
-        <strong data-value="noiseControl">70%</strong>
-        <div class="metric-track"><i data-bar="noiseControl"></i></div>
+        <strong data-value="noiseControl">30%</strong>
+        <div class="metric-track" role="progressbar" aria-label="Noise Control" aria-valuemin="0" aria-valuemax="100" aria-valuenow="30"><i data-bar="noiseControl"></i></div>
       </div>
 
       <div class="metric-row" data-metric="lighting">
         <span>Lighting</span>
-        <strong data-value="lighting">70%</strong>
-        <div class="metric-track"><i data-bar="lighting"></i></div>
+        <strong data-value="lighting">20%</strong>
+        <div class="metric-track" role="progressbar" aria-label="Lighting" aria-valuemin="0" aria-valuemax="100" aria-valuenow="20"><i data-bar="lighting"></i></div>
+      </div>
+
+      <div class="metric-row" data-metric="comfort">
+        <span>Comfort</span>
+        <strong data-value="comfort">40%</strong>
+        <div class="metric-track" role="progressbar" aria-label="Comfort" aria-valuemin="0" aria-valuemax="100" aria-valuenow="40"><i data-bar="comfort"></i></div>
       </div>
 
       <div class="metric-row" data-metric="roomLayout">
         <span>Room Layout</span>
-        <strong data-value="roomLayout">70%</strong>
-        <div class="metric-track"><i data-bar="roomLayout"></i></div>
-      </div>
-
-      <div class="metric-row" data-metric="airQuality">
-        <span>Air Quality</span>
-        <strong data-value="airQuality">70%</strong>
-        <div class="metric-track"><i data-bar="airQuality"></i></div>
+        <strong data-value="roomLayout">50%</strong>
+        <div class="metric-track" role="progressbar" aria-label="Room Layout" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><i data-bar="roomLayout"></i></div>
       </div>
 
       <div class="final-score">
         <span>Final Ergonomic Score</span>
-        <strong data-final-score>70%</strong>
+        <strong data-final-score>36%</strong>
+        <span data-final-status role="status" aria-live="polite">Perlu Perbaikan</span>
       </div>
     </section>
 
+    <aside
+      id="interaction-panel"
+      class="interaction-panel"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="interaction-title"
+      hidden
+    >
+      <div class="interaction-panel__heading">
+        <h2 id="interaction-title">Interaksi</h2>
+        <button type="button" data-action="close" aria-label="Tutup panel interaksi">Tutup</button>
+      </div>
+      <div id="interaction-controls" class="interaction-controls"></div>
+    </aside>
+    <p id="gameplay-hint" role="status" aria-live="polite"></p>
     <div id="interaction-hint" role="status" hidden></div>
     <div id="controller-status" role="status" aria-live="polite" hidden></div>
 
@@ -209,7 +228,7 @@
 
     <a-scene
       room-lighting
-      room-point-lighting
+      room-point-lighting="ceilingOn: false"
       room-shell
       furniture-editor
       ergonomics-evaluator
@@ -266,11 +285,11 @@
 
       <a-entity
         id="player-rig"
-        position="0 0 0"
+        position="2.35 0 1.14"
         room-collision
         fps-controls="speed: 1.35"
       >
-        <!-- Titik referensi dunia: koordinat awal (0.086, 1.620, -0.862) dipetakan ke origin. -->
+        <!-- Titik referensi lokal untuk posisi spawn pemain. -->
         <a-entity id="spawn_point" position="0 0 0"></a-entity>
         <a-entity
           id="player-camera"
@@ -278,7 +297,7 @@
           look-controls="pointerLockEnabled: false; mouseEnabled: false; touchEnabled: true; magicWindowTrackingEnabled: false"
           spawn-look
           position="0 1.62 0"
-          rotation="-5 20 0"
+          rotation="-5 90 0"
         >
         </a-entity>
       </a-entity>

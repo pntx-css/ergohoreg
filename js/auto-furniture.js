@@ -571,13 +571,15 @@ AFRAME.registerComponent('auto-furniture-loader', {
       console.error('[Lighting] The ceiling lamp was loaded, but its point light is missing.');
       return;
     }
+    const baseIntensity = 2.4;
+    light.dataset.baseIntensity = String(baseIntensity);
     const center = box.getCenter(new THREE.Vector3());
     const lightY = Math.min(box.max.y - 0.2, box.min.y + 0.28);
     light.setAttribute('position', `${center.x} ${lightY} ${center.z}`);
     light.setAttribute('light', {
       type: 'point',
       color: '#ffddb3',
-      intensity: 2.4,
+      intensity: this.scene.components['room-point-lighting']?.data.ceilingOn ? baseIntensity : 0,
       distance: 7,
       decay: 2,
       castShadow: false

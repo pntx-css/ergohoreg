@@ -2,8 +2,8 @@ const ERGONOMY_METRICS = [
   ['viewingDistance', 'Viewing Distance'],
   ['noiseControl', 'Noise Control'],
   ['lighting', 'Lighting'],
-  ['roomLayout', 'Room Layout'],
-  ['airQuality', 'Air Quality']
+  ['comfort', 'Comfort'],
+  ['roomLayout', 'Room Layout']
 ];
 
 const scoreClamp = value => Math.max(0, Math.min(100, Math.round(value)));
@@ -12,17 +12,32 @@ const itemCenter = item => new THREE.Vector3(
   (item.collider.minY + item.collider.maxY) / 2,
   (item.collider.minZ + item.collider.maxZ) / 2
 );
+const scoreCategory = score => score >= 90
+  ? 'Sangat Baik'
+  : score >= 75
+    ? 'Baik'
+    : score >= 60
+      ? 'Cukup'
+      : 'Perlu Perbaikan';
 
 AFRAME.registerComponent('ergonomics-evaluator', {
   init() {
     this.lastUpdate = 0;
-    this.scores = Object.fromEntries(ERGONOMY_METRICS.map(([key]) => [key, 70]));
-    this.finalScore = 70;
+    this.baselines = null;
+    this.scores = {
+      viewingDistance: 40,
+      noiseControl: 30,
+      lighting: 20,
+      comfort: 40,
+      roomLayout: 50
+    };
+    this.finalScore = 36;
+    this.category = 'Perlu Perbaikan';
     this.interactionHint = '';
     this.panel = document.getElementById('ergonomics-panel');
     this.canvas = document.createElement('canvas');
     this.canvas.width = 640;
-    this.canvas.height = 470;
+    this.canvas.height = 520;
     this.context = this.canvas.getContext('2d');
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.colorSpace = THREE.SRGBColorSpace;
@@ -43,12 +58,19 @@ AFRAME.registerComponent('ergonomics-evaluator', {
   },
 
   tick() {
-    if (this.panelAttached) return;
-    this.camera = document.getElementById('player-camera');
-    if (!this.camera) return;
-    this.camera.object3D.add(this.vrPanel);
-    this.vrPanel.visible = this.el.is('vr-mode');
-    this.panelAttached = true;
+    if (!this.panelAttached) {
+      this.camera = document.getElementById('player-camera');
+      if (this.camera) {
+        this.camera.object3D.add(this.vrPanel);
+        this.vrPanel.visible = this.el.is('vr-mode');
+        this.panelAttached = true;
+      }
+    }
+
+    const gameplay = this.el.components['ergonomics-gameplay'];
+    const editor = this.el.components['furniture-editor'];
+    const shell = this.el.components['room-shell'];
+    if (gameplay?.scoringReady) this.updateScores(editor?.items || [], shell);
   },
 
   setInteractionHint(message) {
@@ -61,19 +83,30 @@ AFRAME.registerComponent('ergonomics-evaluator', {
     const now = performance.now();
     if (now - this.lastUpdate < 120) return;
     this.lastUpdate = now;
+    const gameplay = this.el.components['ergonomics-gameplay'];
+    const loader = this.el.components['auto-furniture-loader'];
+    if (!gameplay?.scoringReady || !shell) return;
+    const raw = {
+      viewingDistance: this.scoreViewingDistance(items, loader),
+      noiseControl: this.scoreNoiseControl(items, gameplay, loader),
+      roomLayout: this.scoreRoomLayout(shell, items, loader)
+    };
+    if (!this.baselines) this.baselines = raw;
     this.scores = {
-      viewingDistance: this.scoreViewingDistance(items),
-      noiseControl: this.scoreNoiseControl(items),
-      lighting: this.scoreLighting(items),
-      roomLayout: this.scoreRoomLayout(shell),
-      airQuality: this.scoreAirQuality(items)
+      viewingDistance: scoreClamp(40 + (raw.viewingDistance - this.baselines.viewingDistance) * 4),
+      noiseControl: scoreClamp(30 + (raw.noiseControl - this.baselines.noiseControl) * 1.5),
+      lighting: gameplay.getLightingScore(),
+      comfort: gameplay.getComfortScore(),
+      roomLayout: scoreClamp(50 + (raw.roomLayout - this.baselines.roomLayout) * 2.15)
     };
     this.finalScore = scoreClamp(Object.values(this.scores).reduce((sum, score) => sum + score, 0) / ERGONOMY_METRICS.length);
+    this.category = scoreCategory(this.finalScore);
     this.renderScores();
   },
 
-  scoreViewingDistance(items) {
-    const tv = items.find(item => item.role === 'tv');
+  scoreViewingDistance(items, loader) {
+    const tv = items.find(item => item.role === 'tv') ||
+      loader?.placedModels.find(item => item.role.type === 'tv');
     const sofa = items.find(item => item.role === 'sofa');
     if (!tv || !sofa) return 70;
     const distance = itemCenter(tv).distanceTo(itemCenter(sofa));
@@ -83,39 +116,40 @@ AFRAME.registerComponent('ergonomics-evaluator', {
     return scoreClamp(distanceScore * 0.7 + heightScore * 0.3);
   },
 
-  scoreNoiseControl(items) {
+  scoreNoiseControl(items, gameplay, loader) {
     const sofa = items.find(item => item.role === 'sofa');
-    const speakers = items.filter(item => item.role === 'speaker');
-    if (!sofa || !speakers.length) return 70;
+    const speakers = loader?.placedModels.filter(item => item.role.type === 'speaker') || [];
+    if (!sofa || !speakers.length) return 30;
     const sofaCenter = itemCenter(sofa);
-    const distances = speakers.map(item => itemCenter(item).distanceTo(sofaCenter));
-    const average = distances.reduce((sum, distance) => sum + distance, 0) / distances.length;
-    const distanceScore = 100 - Math.abs(average - 2.5) * 25;
-    if (speakers.length < 2) return scoreClamp(distanceScore);
-    const speakerCenters = speakers.map(itemCenter).sort((a, b) => a.x - b.x);
-    const spread = speakerCenters[0].distanceTo(speakerCenters[speakerCenters.length - 1]);
-    const symmetry = 100 - Math.abs(distances[0] - distances[1]) * 35;
-    const spreadScore = 100 - Math.abs(spread - 1.8) * 25;
-    return scoreClamp(distanceScore * 0.35 + symmetry * 0.4 + spreadScore * 0.25);
+    let penalty = gameplay.audioState.tvOn ? gameplay.audioState.tvVolume * 0.35 : 0;
+    for (const speaker of speakers) {
+      const isLeft = speaker.side !== 'right';
+      const powered = gameplay.audioState[isLeft ? 'speakerLeftOn' : 'speakerRightOn'];
+      const volume = gameplay.audioState[isLeft ? 'speakerLeftVolume' : 'speakerRightVolume'];
+      if (!powered) continue;
+
+      penalty += volume * 0.2;
+      const speakerPosition = speaker.entity.object3D.getWorldPosition(new THREE.Vector3());
+      const toSofa = sofaCenter.clone().sub(speakerPosition);
+      toSofa.y = 0;
+      if (toSofa.lengthSq() > 0.001) {
+        toSofa.normalize();
+        const yaw = new THREE.Euler().setFromQuaternion(
+          speaker.entity.object3D.getWorldQuaternion(new THREE.Quaternion()),
+          'YXZ'
+        ).y;
+        const forward = new THREE.Vector3(1, 0, 0)
+          .applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        penalty += Math.max(0, 0.75 - forward.dot(toSofa)) * 12;
+      }
+    }
+    if (gameplay.audioState.acOn && gameplay.audioState.acMode === 'turbo') penalty += 20;
+    if (gameplay.audioState.acOn && gameplay.audioState.acMode === 'silent') penalty += 5;
+    if (gameplay.audioState.phoneOn) penalty += 12;
+    return scoreClamp(100 - penalty);
   },
 
-  scoreLighting(items) {
-    const lamp = items.find(item => item.role === 'lamp');
-    const tv = items.find(item => item.role === 'tv');
-    if (!lamp || !tv) return 70;
-    const from = itemCenter(lamp);
-    const toTV = itemCenter(tv).sub(from);
-    toTV.y = 0;
-    if (toTV.lengthSq() < 0.001) return 40;
-    toTV.normalize();
-    const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), lamp.entity.object3D.rotation.y);
-    forward.y = 0;
-    forward.normalize();
-    const facingTV = forward.dot(toTV);
-    return scoreClamp(facingTV > 0.72 ? 35 : 96 - Math.max(0, facingTV) * 12);
-  },
-
-  scoreRoomLayout(shell) {
+  scoreRoomLayout(shell, items, loader) {
     const bounds = shell.playerBounds;
     const cell = 0.35;
     const cols = Math.max(1, Math.floor((bounds.maxX - bounds.minX) / cell));
@@ -163,21 +197,21 @@ AFRAME.registerComponent('ergonomics-evaluator', {
     const freeRatio = freeCount / blocked.length;
     const connectedRatio = largestArea / freeCount;
     const clearLaneRatio = laneCells ? clearLaneCells / laneCells : 1;
-    return scoreClamp(100 * (freeRatio * 0.25 + connectedRatio * 0.5 + clearLaneRatio * 0.25));
-  },
+    const openSpaceScore = 100 * (freeRatio * 0.25 + connectedRatio * 0.5 + clearLaneRatio * 0.25);
+    const sofa = items.find(item => item.role === 'sofa');
+    const table = items.find(item => item.id === 'MEJA');
+    const tv = loader?.placedModels.find(item => item.role.type === 'tv');
+    const phone = shell.colliders.find(item => item.id === 'TELEPHONE');
+    if (!sofa || !table || !tv || !phone) return scoreClamp(openSpaceScore);
 
-  scoreAirQuality(items) {
-    const purifier = items.find(item => item.role === 'airPurifier');
-    if (!purifier) return 70;
-    const box = purifier.collider;
-    const cx = (box.minX + box.maxX) / 2;
-    const cz = (box.minZ + box.maxZ) / 2;
-    const neighbors = items.filter(item => item !== purifier && item.collider.minY < box.maxY && item.collider.maxY > box.minY).filter(item => {
-      const x = clamp(cx, item.collider.minX, item.collider.maxX);
-      const z = clamp(cz, item.collider.minZ, item.collider.maxZ);
-      return Math.hypot(cx - x, cz - z) < 0.75;
-    }).length;
-    return scoreClamp(100 - neighbors * 24);
+    const sofaViewingDistance = itemCenter(sofa).distanceTo(itemCenter(tv));
+    const tableToPhoneDistance = Math.hypot(
+      itemCenter(table).x - itemCenter({collider: phone}).x,
+      itemCenter(table).z - itemCenter({collider: phone}).z
+    );
+    const sofaPlacementScore = Math.max(0, 100 - Math.abs(sofaViewingDistance - 2.8) * 28);
+    const tablePlacementScore = Math.max(0, 100 - Math.max(0, tableToPhoneDistance - 1.8) * 18);
+    return scoreClamp(openSpaceScore * 0.4 + sofaPlacementScore * 0.3 + tablePlacementScore * 0.3);
   },
 
   renderScores() {
@@ -187,9 +221,13 @@ AFRAME.registerComponent('ergonomics-evaluator', {
         const bar = this.panel.querySelector(`[data-bar="${key}"]`);
         if (value) value.textContent = `${this.scores[key]}%`;
         if (bar) bar.style.width = `${this.scores[key]}%`;
+        const track = bar?.parentElement;
+        if (track) track.setAttribute('aria-valuenow', String(this.scores[key]));
       }
       const total = this.panel.querySelector('[data-final-score]');
       if (total) total.textContent = `${this.finalScore}%`;
+      const status = this.panel.querySelector('[data-final-status]');
+      if (status) status.textContent = this.category;
     }
     this.renderVRPanel();
   },
@@ -226,7 +264,7 @@ AFRAME.registerComponent('ergonomics-evaluator', {
     }
     context.fillStyle = '#ffffff';
     context.font = 'bold 29px Arial';
-    context.fillText(`FINAL SCORE  ${this.finalScore}%`, 32, 408);
+    context.fillText(`FINAL SCORE  ${this.finalScore}% · ${this.category}`, 32, 408);
     if (this.interactionHint) {
       context.fillStyle = '#9de8ff';
       context.font = '20px Arial';

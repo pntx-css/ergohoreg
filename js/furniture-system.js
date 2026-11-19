@@ -204,6 +204,7 @@ AFRAME.registerComponent('furniture-editor', {
     }
     if (!this.ready) this.ready = true;
 
+    this.registerAutoSofaItems();
     this.updateFurnitureColliders();
     this.updateVRButtons();
     if (this.grabbedItem) this.updateGrabbedItem();
@@ -234,7 +235,7 @@ AFRAME.registerComponent('furniture-editor', {
     this.createTVArea();
     this.registerLampu();
     this.registerModelCollider('TELEPHONE', 'telephone_on_a_table.glb');
-    this.registerModelCollider('MEJA', 'coffee_table_-_living_room.glb');
+    this.registerModelCollider('MEJA', 'coffee_table_-_living_room.glb', true);
     this.updateFurnitureColliders();
     this.furnitureInitialized = true;
   },
@@ -314,7 +315,7 @@ AFRAME.registerComponent('furniture-editor', {
     if (this.shell.debug) this.shell.addDebugBox(collider, '#42e875', `${collider.name}-debug`);
   },
 
-  registerModelCollider(entityId, source) {
+  registerModelCollider(entityId, source, movable = false) {
     const entity = document.getElementById(entityId);
     if (!entity) return;
 
@@ -346,6 +347,54 @@ AFRAME.registerComponent('furniture-editor', {
         source,
         role: 'furniture'
       };
+      if (movable) {
+        const inverse = entity.object3D.matrixWorld.clone().invert();
+        const localBounds = new THREE.Box3();
+        model.traverse(object => {
+          if (!object.isMesh || !object.geometry?.attributes?.position) return;
+          if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+          const matrix = inverse.clone().multiply(object.matrixWorld);
+          localBounds.union(object.geometry.boundingBox.clone().applyMatrix4(matrix));
+        });
+        if (localBounds.isEmpty()) {
+          console.error(`[Furniture] Could not measure the ${entityId} model for interaction.`);
+          return;
+        }
+        const size = localBounds.getSize(new THREE.Vector3());
+        const worldPosition = entity.object3D.getWorldPosition(new THREE.Vector3());
+        const item = {
+          id: entity.id,
+          label: 'Meja Telepon',
+          role: 'table',
+          source,
+          entity,
+          transform: entity,
+          meshes: [],
+          materials: this.collectMaterials(model),
+          position: entity.object3D.position,
+          originalPosition: entity.object3D.position.clone(),
+          width: size.x,
+          depth: size.z,
+          height: size.y,
+          verticalOrigin: 'bottom',
+          baseY: entity.object3D.position.y,
+          floorOffset: bounds.min.y - worldPosition.y,
+          rotationY: entity.object3D.rotation.y,
+          originalRotationY: entity.object3D.rotation.y,
+          verticalOffset: 0,
+          valid: true,
+          collider,
+          moved: false
+        };
+        model.traverse(object => {
+          if (object.isMesh) item.meshes.push(object);
+        });
+        collider.itemId = item.id;
+        collider.role = item.role;
+        collider.item = item;
+        this.items.push(item);
+        this.captureInitialOverlaps();
+      }
       this.shell.colliders.push(collider);
       if (this.shell.debug) this.shell.addDebugBox(collider, '#ff9c38', `${entityId}-debug`);
       console.info('[LivingRoom] Scene model collision registered.', {
@@ -363,6 +412,66 @@ AFRAME.registerComponent('furniture-editor', {
       entity.addEventListener('model-error', event => {
         console.error(`[LivingRoom] ${entityId} model failed to load; collision was not registered.`, event.detail);
       }, {once: true});
+    }
+  },
+
+  registerAutoSofaItems() {
+    const models = this.scene.components['auto-furniture-loader']?.placedModels || [];
+    for (const model of models) {
+      if (model.role.type !== 'sofa' || !model.collider ||
+        this.items.some(item => item.id === model.entity.id || item.role === 'sofa')) continue;
+
+      const entity = model.entity;
+      entity.object3D.updateWorldMatrix(true, true);
+      const inverse = entity.object3D.matrixWorld.clone().invert();
+      const localBounds = new THREE.Box3();
+      model.root?.traverse(object => {
+        if (!object.isMesh || !object.geometry?.attributes?.position) return;
+        if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+        const matrix = inverse.clone().multiply(object.matrixWorld);
+        localBounds.union(object.geometry.boundingBox.clone().applyMatrix4(matrix));
+      });
+      if (localBounds.isEmpty()) {
+        console.error(`[Furniture] Could not measure the ${entity.id} model for interaction.`);
+        continue;
+      }
+
+      const size = localBounds.getSize(new THREE.Vector3());
+      const worldPosition = entity.object3D.getWorldPosition(new THREE.Vector3());
+      const item = {
+        id: entity.id,
+        label: 'Sofa',
+        role: 'sofa',
+        source: model.descriptor.path,
+        entity,
+        transform: entity,
+        meshes: [],
+        materials: this.collectMaterials(model.root),
+        position: entity.object3D.position,
+        originalPosition: entity.object3D.position.clone(),
+        width: size.x,
+        depth: size.z,
+        height: size.y,
+        verticalOrigin: 'bottom',
+        baseY: entity.object3D.position.y,
+        floorOffset: model.bounds.min.y - worldPosition.y,
+        rotationY: entity.object3D.rotation.y,
+        originalRotationY: entity.object3D.rotation.y,
+        verticalOffset: 0,
+        valid: true,
+        collider: model.collider,
+        moved: false,
+        autoModel: model
+      };
+      model.root?.traverse(object => {
+        if (object.isMesh) item.meshes.push(object);
+      });
+      model.collider.kind = 'furniture';
+      model.collider.itemId = item.id;
+      model.collider.role = item.role;
+      model.collider.item = item;
+      this.items.push(item);
+      this.captureInitialOverlaps();
     }
   },
 
@@ -668,7 +777,9 @@ AFRAME.registerComponent('furniture-editor', {
     const height = item.height * Math.abs(scale.y);
     const halfX = Math.abs(Math.cos(pose.yaw)) * halfWidth + Math.abs(Math.sin(pose.yaw)) * halfDepth + FURNITURE_CLEARANCE;
     const halfZ = Math.abs(Math.sin(pose.yaw)) * halfWidth + Math.abs(Math.cos(pose.yaw)) * halfDepth + FURNITURE_CLEARANCE;
-    const minY = item.verticalOrigin === 'center' ? pose.position.y - height / 2 : pose.position.y;
+    const minY = item.verticalOrigin === 'center'
+      ? pose.position.y - height / 2
+      : pose.position.y + (item.floorOffset || 0);
     return {
       minX: pose.position.x - halfX, maxX: pose.position.x + halfX,
       minY, maxY: minY + height,
@@ -746,7 +857,7 @@ AFRAME.registerComponent('furniture-editor', {
     const targetZ = this.cameraPosition.z + this.direction.z * 1.35;
     const floorHeight = this.getFloorHeight(targetX, targetZ);
     const candidateY = item.verticalOrigin === 'bottom' || item.role === 'lamp'
-      ? FURNITURE_FLOOR_Y
+      ? FURNITURE_FLOOR_Y - (item.floorOffset || 0)
       : Math.max(FURNITURE_FLOOR_Y, floorHeight ?? FURNITURE_FLOOR_Y, item.baseY + item.verticalOffset);
     const candidatePose = {
       position: new THREE.Vector3(

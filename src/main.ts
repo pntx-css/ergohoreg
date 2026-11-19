@@ -1,4 +1,5 @@
 import type { Entity, Scene } from 'aframe';
+import '../public/js/gameplay.js';
 import { DesktopController } from './controllers/DesktopController';
 import { MobileController } from './controllers/MobileController';
 import { VRController } from './controllers/VRController';
@@ -123,6 +124,7 @@ function onSceneLoaded(): void {
 }
 
 initModePicker();
+sceneEl?.setAttribute('ergonomics-gameplay', '');
 if (sceneEl?.hasLoaded) {
   startActiveController();
 } else {

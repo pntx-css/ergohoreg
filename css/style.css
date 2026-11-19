@@ -70,6 +70,15 @@ body:not(.is-start-menu-open) #start-menu { visibility: hidden; opacity: 0; poin
 
 @media (max-width: 480px) { .start-menu__content { width: min(100% - 30px, 520px); }.mode-card { padding: 13px 15px; }.start-menu__footer { bottom: 16px; } }
 
+@media (max-width: 480px) {
+  #mission-text {
+    right: 12px;
+    bottom: 68px;
+    left: 12px;
+    max-width: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #start-menu,
   .mode-card { transition: none; }
@@ -148,6 +157,27 @@ body.xr-capable .a-enter-vr {
 }
 
 #collision-debug-panel[hidden] {
+  display: none;
+}
+
+#mission-text {
+  position: fixed;
+  z-index: 6;
+  bottom: 68px;
+  left: 14px;
+  max-width: min(460px, calc(100vw - 28px));
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 10px;
+  color: #eff8f7;
+  background: rgb(14 27 31 / 88%);
+  font: 600 13px/1.4 system-ui, sans-serif;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+body.is-start-menu-open #mission-text {
   display: none;
 }
 
@@ -235,6 +265,7 @@ body.xr-capable .a-enter-vr {
 
 .final-score {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -248,6 +279,126 @@ body.xr-capable .a-enter-vr {
   color: #9df0be;
   font-size: 18px;
   font-variant-numeric: tabular-nums;
+}
+
+.final-score [data-final-status] {
+  flex-basis: 100%;
+  color: #ffd166;
+  font-size: 11px;
+  text-align: right;
+}
+
+#gameplay-hint {
+  position: fixed;
+  z-index: 8;
+  bottom: 116px;
+  left: 50%;
+  max-width: min(460px, calc(100vw - 28px));
+  margin: 0;
+  padding: 8px 12px;
+  transform: translateX(-50%);
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 999px;
+  color: #eff8f7;
+  background: rgb(14 27 31 / 88%);
+  font: 600 12px/1.35 system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+#gameplay-hint:empty,
+body.is-start-menu-open #gameplay-hint {
+  display: none;
+}
+
+.interaction-panel {
+  position: fixed;
+  z-index: 12;
+  right: 14px;
+  bottom: 86px;
+  width: min(320px, calc(100vw - 28px));
+  max-height: min(60vh, 520px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 12px;
+  color: #eff8f7;
+  background: rgb(10 22 28 / 94%);
+  font: 500 14px/1.4 system-ui, sans-serif;
+  backdrop-filter: blur(10px);
+}
+
+.interaction-panel[hidden] {
+  display: none;
+}
+
+.interaction-panel__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.interaction-panel__heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.interaction-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.interaction-panel button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 8px;
+  color: #eff8f7;
+  background: rgb(255 255 255 / 8%);
+  font: inherit;
+  cursor: pointer;
+}
+
+.interaction-panel button:hover,
+.interaction-panel button.is-active {
+  border-color: #9df0be;
+  background: rgb(101 223 154 / 18%);
+}
+
+.interaction-panel button:focus-visible,
+.interaction-panel input:focus-visible {
+  outline: 3px solid #9de8ff;
+  outline-offset: 2px;
+}
+
+.interaction-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.interaction-control input {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: #65df9a;
+}
+
+.interaction-control output {
+  font-variant-numeric: tabular-nums;
+}
+
+.interaction-control__label,
+.interaction-panel__warning {
+  margin: 0;
+}
+
+.interaction-panel__warning {
+  color: #ffb1a8;
+  font-weight: 700;
 }
 
 #interaction-hint {
@@ -287,6 +438,14 @@ body.xr-capable .a-enter-vr {
 @media (pointer: coarse) and (hover: none) {
   #touch-move {
     display: block;
+  }
+
+  .interaction-panel {
+    right: 12px;
+    bottom: 118px;
+    left: 12px;
+    width: auto;
+    max-height: 48vh;
   }
 }
 
