@@ -555,7 +555,7 @@ AFRAME.registerComponent('room-lighting', {
       const generator = new THREE.PMREMGenerator(scene.renderer);
       const environment = generator.fromCubemap(cube);
       scene.object3D.environment = environment.texture;
-      scene.object3D.environmentIntensity = 0.65;
+      scene.object3D.environmentIntensity = 0.08;
       cube.dispose();
       generator.dispose();
     };

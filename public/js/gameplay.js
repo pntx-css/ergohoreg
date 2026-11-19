@@ -322,7 +322,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     if (lighting && lighting.data.ceilingOn !== this.lightOn) {
       this.el.setAttribute('room-point-lighting', 'ceilingOn', this.lightOn);
     }
-    const lights = this.el.querySelectorAll('[id^="room-light-ceiling-"]');
+    const lights = this.el.querySelectorAll('[data-light-group="ceiling"]');
     for (const light of lights) {
       const settings = light.getAttribute('light');
       if (!settings) continue;

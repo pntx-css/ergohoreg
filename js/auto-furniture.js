@@ -565,33 +565,6 @@ AFRAME.registerComponent('auto-furniture-loader', {
     return {box: this.getModelBox(entity), wall: 'right'};
   },
 
-  updateCeilingLampLighting(box) {
-    const light = document.getElementById('room-light-ceiling-center');
-    if (!light) {
-      console.error('[Lighting] The ceiling lamp was loaded, but its point light is missing.');
-      return;
-    }
-    const baseIntensity = 2.4;
-    light.dataset.baseIntensity = String(baseIntensity);
-    const center = box.getCenter(new THREE.Vector3());
-    const lightY = Math.min(box.max.y - 0.2, box.min.y + 0.28);
-    light.setAttribute('position', `${center.x} ${lightY} ${center.z}`);
-    light.setAttribute('light', {
-      type: 'point',
-      color: '#ffddb3',
-      intensity: this.scene.components['room-point-lighting']?.data.ceilingOn ? baseIntensity : 0,
-      distance: 7,
-      decay: 2,
-      castShadow: false
-    });
-    console.info('[Lighting] Warm ceiling-lamp lighting positioned.', {
-      position: vectorData(new THREE.Vector3(center.x, lightY, center.z)),
-      color: '#ffddb3',
-      intensity: 2.4,
-      distance: 7
-    });
-  },
-
   isValidCandidate(box, item, ignoreCollider = null) {
     const room = this.getRoom();
     const inside = room.inside;
@@ -782,8 +755,6 @@ AFRAME.registerComponent('auto-furniture-loader', {
       const editor = this.scene.components['furniture-editor'];
       if (editor) editor.floorObject = entity;
     }
-    if (item.role.type === 'ceiling-lamp') this.updateCeilingLampLighting(item.bounds);
-
     const rotation = entity.object3D.rotation;
     const report = {
       modelName: descriptor.instanceName,
