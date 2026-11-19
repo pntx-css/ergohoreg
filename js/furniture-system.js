@@ -118,6 +118,24 @@ AFRAME.registerComponent('furniture-editor', {
     this.raycaster = new THREE.Raycaster();
     this.floorRaycaster = new THREE.Raycaster();
     this.floorObject = document.getElementById('ground');
+    this.fPopup = document.getElementById('f-interaction-popup');
+    this.fPopupContent = document.getElementById('f-interaction-content');
+    this.fPopupClose = document.getElementById('f-interaction-close');
+    this.onFPopupClose = () => {
+      if (this.fPopup) this.fPopup.hidden = true;
+    };
+    this.onPopupBackdropClick = event => {
+      if (event.target === this.fPopup) this.onFPopupClose();
+    };
+    this.onPopupKeyDown = event => {
+      if (event.key === 'Escape' && this.fPopup && !this.fPopup.hidden) {
+        event.preventDefault();
+        this.onFPopupClose();
+      }
+    };
+    this.fPopupClose?.addEventListener('click', this.onFPopupClose);
+    this.fPopup?.addEventListener('click', this.onPopupBackdropClick);
+    window.addEventListener('keydown', this.onPopupKeyDown);
     this.vrButtonState = {grab: false, left: false, right: false, up: false, down: false};
     this.preview = document.createElement('a-box');
     this.preview.id = 'furniture-placement-preview';
@@ -158,7 +176,11 @@ AFRAME.registerComponent('furniture-editor', {
     this.heightDownButton = document.getElementById('height-down-button');
     this.onKeyDown = event => {
       if (event.repeat) return;
-      if (event.code === 'KeyE') {
+      if (event.code === 'KeyF') {
+        event.preventDefault();
+        this.toggleGrab();
+        this.showFPopup();
+      } else if (event.code === 'KeyE') {
         event.preventDefault();
         this.toggleGrab();
       } else if (event.code === 'KeyQ') {
@@ -912,6 +934,18 @@ AFRAME.registerComponent('furniture-editor', {
     this.preview.object3D.visible = true;
   },
 
+  showFPopup() {
+    if (!this.fPopup || !this.fPopupContent) return;
+    if (this.grabbedItem) {
+      this.fPopupContent.textContent = `${this.grabbedItem.label} sedang dipindahkan. Tekan F untuk meletakkan atau tutup popup ini untuk melanjutkan.`;
+    } else if (this.nearbyItem) {
+      this.fPopupContent.textContent = `${this.nearbyItem.label} terdeteksi oleh crosshair. Tekan F untuk mengambil barang ini.`;
+    } else {
+      this.fPopupContent.textContent = 'Placeholder fungsi F. Arahkan crosshair ke hitbox furnitur, lalu tekan F.';
+    }
+    this.fPopup.hidden = false;
+  },
+
   toggleGrab() {
     if (this.grabbedItem) {
       const item = this.grabbedItem;
@@ -1003,17 +1037,17 @@ AFRAME.registerComponent('furniture-editor', {
     let disabled = true;
     if (this.grabbedItem) {
       const item = this.grabbedItem;
-      const controls = this.scene.is('vr-mode') ? 'trigger letakkan · stik kanan putar' : 'E letakkan · Q/R putar 15°';
+      const controls = this.scene.is('vr-mode') ? 'trigger letakkan · stik kanan putar' : 'F letakkan · Q/R putar 15°';
       const heightControls = this.scene.is('vr-mode') ? ' · stik kanan atas/bawah tinggi' : ' · T/G tinggi';
       message = item.valid
         ? `${item.label} · ${controls}${item.role === 'tv' ? heightControls : ''}`
-        : `${item.label} · preview merah; E kembali ke posisi valid terakhir`;
+        : `${item.label} · preview merah; F kembali ke posisi valid terakhir`;
       buttonLabel = item.valid ? 'Letakkan' : 'Kembali ke posisi valid';
       disabled = false;
     } else if (this.nearbyItem) {
       message = this.scene.is('vr-mode')
         ? `Tekan trigger untuk mengambil · ${this.nearbyItem.label}`
-        : `Tekan E untuk Mengambil · ${this.nearbyItem.label}`;
+        : `Tekan F untuk Mengambil · ${this.nearbyItem.label}`;
       buttonLabel = `Ambil ${this.nearbyItem.label}`;
       disabled = false;
     }
@@ -1061,6 +1095,9 @@ AFRAME.registerComponent('furniture-editor', {
 
   remove() {
     window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keydown', this.onPopupKeyDown);
+    this.fPopupClose?.removeEventListener('click', this.onFPopupClose);
+    this.fPopup?.removeEventListener('click', this.onPopupBackdropClick);
     this.grabButton?.removeEventListener('click', this.onGrabClick);
     this.rotateLeftButton?.removeEventListener('click', this.onRotateLeft);
     this.rotateRightButton?.removeEventListener('click', this.onRotateRight);

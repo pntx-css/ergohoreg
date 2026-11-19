@@ -254,6 +254,70 @@ body.xr-capable .a-enter-vr {
   display: none !important;
 }
 
+.f-interaction-popup {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(1 8 10 / 55%);
+  backdrop-filter: blur(6px);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.f-interaction-popup[hidden] {
+  display: none;
+}
+
+.f-interaction-popup__panel {
+  width: min(380px, 100%);
+  padding: 20px;
+  border: 1px solid rgb(198 255 232 / 24%);
+  border-radius: 14px;
+  color: #eff8f5;
+  background: #10282c;
+  box-shadow: 0 22px 70px rgb(0 0 0 / 35%);
+}
+
+.f-interaction-popup__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.f-interaction-popup__heading p {
+  margin: 0 0 3px;
+  color: #9be1ca;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.f-interaction-popup__heading h2 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.f-interaction-popup__heading button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #285158;
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  background: #143238;
+}
+
+.f-interaction-popup #f-interaction-content {
+  margin: 16px 0 0;
+  color: #dce8e5;
+  line-height: 1.5;
+}
+
 #controller-status {
   position: fixed;
   z-index: 8;

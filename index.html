@@ -191,6 +191,25 @@
 
     <div id="interaction-hint" role="status" hidden></div>
     <div id="controller-status" role="status" aria-live="polite" hidden></div>
+    <section
+      id="f-interaction-popup"
+      class="f-interaction-popup"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="f-interaction-title"
+      hidden
+    >
+      <div class="f-interaction-popup__panel">
+        <div class="f-interaction-popup__heading">
+          <div>
+            <p>Kontrol Interaksi</p>
+            <h2 id="f-interaction-title">F</h2>
+          </div>
+          <button id="f-interaction-close" type="button">Tutup</button>
+        </div>
+        <p id="f-interaction-content">Placeholder fungsi interaksi.</p>
+      </div>
+    </section>
 
     <div id="grab-controls" aria-label="Kontrol furnitur">
       <button id="rotate-left-button" type="button" aria-label="Putar kiri">
@@ -199,7 +218,7 @@
       <button id="height-down-button" type="button" aria-label="Turunkan TV">
         TV&nbsp; −
       </button>
-      <button id="grab-button" type="button" disabled>Dekati furnitur</button>
+      <button id="grab-button" type="button" disabled>F · Dekati furnitur</button>
       <button id="height-up-button" type="button" aria-label="Naikkan TV">
         TV&nbsp; +
       </button>
