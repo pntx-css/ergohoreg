@@ -22,6 +22,8 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.moveItem = null;
     this.appliedTV = null;
     this.lastTargetCheck = 0;
+    this.rotationBlockedUntil = 0;
+    this.panelHadPointerLock = false;
     this.scoringReady = false;
     this.runtimeItems = new WeakMap();
     this.panel = document.getElementById('interaction-panel');
@@ -116,11 +118,13 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     const target = this.findTarget();
     if (!this.panel || this.panel.hidden) this.activeTarget = target;
     this.crosshair?.classList.toggle('is-target', !!target);
-    this.hint.textContent = this.moveItem
-      ? 'Tekan F untuk menyelesaikan penataan'
-      : target
-        ? `Tekan F untuk berinteraksi · ${target.label}`
-        : '';
+    this.hint.textContent = this.rotationBlockedUntil > performance.now()
+      ? 'Rotasi dihentikan agar speaker tidak menembus furnitur.'
+      : this.moveItem
+        ? 'Tekan F untuk menyelesaikan penataan'
+        : target
+          ? `Tekan F untuk berinteraksi · ${target.label}`
+          : '';
     this.applyLighting();
   },
 
@@ -303,7 +307,12 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.activeTarget = target;
     if (this.panel) this.panel.hidden = false;
     document.body.classList.add('is-interaction-panel-open');
-    if (document.pointerLockElement) document.exitPointerLock();
+    this.panelHadPointerLock = document.pointerLockElement === this.el.canvas;
+    if (this.panelHadPointerLock) {
+      document.getElementById('player-rig')
+        ?.components['fps-controls']?.desktopController?.exitPointerLock();
+      if (document.pointerLockElement) document.exitPointerLock();
+    }
     this.renderPanel();
     this.panel?.querySelector('button[data-action="close"]')?.focus();
   },
@@ -321,6 +330,9 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     const lighting = this.el.components['room-point-lighting'];
     if (lighting && lighting.data.ceilingOn !== this.lightOn) {
       this.el.setAttribute('room-point-lighting', 'ceilingOn', this.lightOn);
+    }
+    if (lighting && lighting.data.interiorOn !== this.lightOn) {
+      this.el.setAttribute('room-point-lighting', 'interiorOn', this.lightOn);
     }
     const lights = this.el.querySelectorAll('[data-light-group="ceiling"]');
     for (const light of lights) {
@@ -390,9 +402,96 @@ AFRAME.registerComponent('ergonomics-gameplay', {
   rotateSpeaker(degrees) {
     const item = this.activeTarget?.item;
     if (item?.role !== 'speaker') return;
-    item.transform.object3D.rotation.y += THREE.MathUtils.degToRad(degrees);
-    item.rotationY = item.transform.object3D.rotation.y;
+    const transform = item.transform.object3D;
+    const editor = this.el.components['furniture-editor'];
+    const previousPosition = transform.position.clone();
+    const previousRotation = transform.rotation.clone();
+    const previousRotationY = item.rotationY;
+    if (!item.rotationPivot) {
+      item.rotationPivot = this.getEntityLocalBoundsCenter(item.entity);
+      if (!item.rotationPivot) {
+        console.error(`[Gameplay] Could not measure ${item.label} for rotation.`);
+        return;
+      }
+    }
+
+    const parent = transform.parent;
+    transform.updateWorldMatrix(true, false);
+    const centerBefore = transform.localToWorld(item.rotationPivot.clone());
+    transform.rotation.y = THREE.MathUtils.euclideanModulo(
+      transform.rotation.y + THREE.MathUtils.degToRad(degrees),
+      Math.PI * 2
+    );
+    transform.updateMatrix();
+    transform.updateWorldMatrix(true, false);
+    const centerAfter = transform.localToWorld(item.rotationPivot.clone());
+    const parentCenterBefore = parent ? parent.worldToLocal(centerBefore) : centerBefore;
+    const parentCenterAfter = parent ? parent.worldToLocal(centerAfter) : centerAfter;
+    transform.position.add(parentCenterBefore.sub(parentCenterAfter));
+    transform.updateMatrix();
+    transform.updateWorldMatrix(true, true);
+
+    if (editor?.items.includes(item)) {
+      editor.updateFurnitureColliders();
+      if (!editor.isValidPlacement(item, item.collider)) {
+        transform.position.copy(previousPosition);
+        transform.rotation.copy(previousRotation);
+        transform.updateMatrix();
+        editor.updateFurnitureColliders();
+        item.rotationY = previousRotationY;
+        this.showRotationBlockedHint();
+        return;
+      }
+    } else if (item.collider && editor?.shell) {
+      const bounds = new THREE.Box3().setFromObject(item.entity.getObject3D('mesh') || transform);
+      const obstacle = editor.shell.colliders.find(collider =>
+        collider !== item.collider && editor.collidesWithBox(bounds, collider)
+      );
+      if (obstacle) {
+        transform.position.copy(previousPosition);
+        transform.rotation.copy(previousRotation);
+        transform.updateMatrix();
+        transform.updateWorldMatrix(true, true);
+        item.rotationY = previousRotationY;
+        this.showRotationBlockedHint();
+        return;
+      }
+      Object.assign(item.collider, {
+        minX: bounds.min.x,
+        maxX: bounds.max.x,
+        minY: bounds.min.y,
+        maxY: bounds.max.y,
+        minZ: bounds.min.z,
+        maxZ: bounds.max.z
+      });
+    }
+
+    item.rotationY = transform.rotation.y;
+    this.el.object3D.updateMatrixWorld(true);
     this.refreshScores();
+  },
+
+  showRotationBlockedHint() {
+    this.rotationBlockedUntil = performance.now() + 1600;
+    this.hint.textContent = 'Rotasi dihentikan agar speaker tidak menembus furnitur.';
+  },
+
+  getEntityLocalBoundsCenter(entity) {
+    const transform = entity?.object3D;
+    if (!transform) return null;
+
+    transform.updateWorldMatrix(true, true);
+    const inverse = transform.matrixWorld.clone().invert();
+    const bounds = new THREE.Box3();
+    const localMatrix = new THREE.Matrix4();
+    const root = entity.getObject3D('mesh') || transform;
+    root.traverse(object => {
+      if (!object.isMesh || !object.geometry?.attributes?.position) return;
+      if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+      localMatrix.multiplyMatrices(inverse, object.matrixWorld);
+      bounds.union(object.geometry.boundingBox.clone().applyMatrix4(localMatrix));
+    });
+    return bounds.isEmpty() ? null : bounds.getCenter(new THREE.Vector3());
   },
 
   updateTVAppearance(item = this.activeTarget?.item) {
@@ -417,6 +516,11 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       case 'close':
         if (this.panel) this.panel.hidden = true;
         document.body.classList.remove('is-interaction-panel-open');
+        if (this.panelHadPointerLock && control) {
+          document.getElementById('player-rig')
+            ?.components['fps-controls']?.desktopController?.requestPointerLock();
+        }
+        this.panelHadPointerLock = false;
         return;
       case 'light-toggle':
         this.toggleLight();

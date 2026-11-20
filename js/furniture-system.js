@@ -121,8 +121,13 @@ AFRAME.registerComponent('furniture-editor', {
     this.fPopup = document.getElementById('f-interaction-popup');
     this.fPopupContent = document.getElementById('f-interaction-content');
     this.fPopupClose = document.getElementById('f-interaction-close');
+    this.fPopupHadPointerLock = false;
     this.onFPopupClose = () => {
       if (this.fPopup) this.fPopup.hidden = true;
+      if (!this.fPopupHadPointerLock) return;
+      this.fPopupHadPointerLock = false;
+      const desktopController = this.rig?.components['fps-controls']?.desktopController;
+      if (desktopController) desktopController.requestPointerLock();
     };
     this.onPopupBackdropClick = event => {
       if (event.target === this.fPopup) this.onFPopupClose();
@@ -387,7 +392,7 @@ AFRAME.registerComponent('furniture-editor', {
         const worldPosition = entity.object3D.getWorldPosition(new THREE.Vector3());
         const item = {
           id: entity.id,
-          label: 'Meja Telepon',
+          label: 'Meja',
           role: 'table',
           source,
           entity,
@@ -399,6 +404,7 @@ AFRAME.registerComponent('furniture-editor', {
           width: size.x,
           depth: size.z,
           height: size.y,
+          localCenter: localBounds.getCenter(new THREE.Vector3()),
           verticalOrigin: 'bottom',
           baseY: entity.object3D.position.y,
           floorOffset: bounds.min.y - worldPosition.y,
@@ -798,15 +804,24 @@ AFRAME.registerComponent('furniture-editor', {
     const halfWidth = item.width * Math.abs(scale.x) / 2;
     const halfDepth = item.depth * Math.abs(scale.z) / 2;
     const height = item.height * Math.abs(scale.y);
-    const halfX = Math.abs(Math.cos(pose.yaw)) * halfWidth + Math.abs(Math.sin(pose.yaw)) * halfDepth + FURNITURE_CLEARANCE;
-    const halfZ = Math.abs(Math.sin(pose.yaw)) * halfWidth + Math.abs(Math.cos(pose.yaw)) * halfDepth + FURNITURE_CLEARANCE;
+    const cosine = Math.cos(pose.yaw);
+    const sine = Math.sin(pose.yaw);
+    const halfX = Math.abs(cosine) * halfWidth + Math.abs(sine) * halfDepth + FURNITURE_CLEARANCE;
+    const halfZ = Math.abs(sine) * halfWidth + Math.abs(cosine) * halfDepth + FURNITURE_CLEARANCE;
+    const localCenter = item.localCenter;
+    const centerX = pose.position.x + (localCenter
+      ? cosine * localCenter.x * scale.x + sine * localCenter.z * scale.z
+      : 0);
+    const centerZ = pose.position.z + (localCenter
+      ? -sine * localCenter.x * scale.x + cosine * localCenter.z * scale.z
+      : 0);
     const minY = item.verticalOrigin === 'center'
       ? pose.position.y - height / 2
       : pose.position.y + (item.floorOffset || 0);
     return {
-      minX: pose.position.x - halfX, maxX: pose.position.x + halfX,
+      minX: centerX - halfX, maxX: centerX + halfX,
       minY, maxY: minY + height,
-      minZ: pose.position.z - halfZ, maxZ: pose.position.z + halfZ
+      minZ: centerZ - halfZ, maxZ: centerZ + halfZ
     };
   },
 
@@ -1048,6 +1063,14 @@ AFRAME.registerComponent('furniture-editor', {
 
   showFPopup() {
     if (!this.fPopup || !this.fPopupContent) return;
+    if (this.fPopup.hidden) {
+      this.fPopupHadPointerLock = document.pointerLockElement === this.scene.canvas;
+    }
+    if (this.fPopupHadPointerLock) {
+      const desktopController = this.rig?.components['fps-controls']?.desktopController;
+      if (desktopController) desktopController.exitPointerLock();
+      else if (document.pointerLockElement) document.exitPointerLock();
+    }
     if (this.grabbedItem) {
       this.fPopupContent.textContent = `${this.grabbedItem.label} sedang dipindahkan. Tekan F untuk meletakkan atau tutup popup ini untuk melanjutkan.`;
     } else if (this.nearbyItem) {

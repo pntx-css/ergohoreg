@@ -3,15 +3,16 @@ const ROOM_LIGHT_SOURCES = [
   { id: 'ceiling-left', position: '-1.6 3.8 -0.8', intensity: 2.2, distance: 7, group: 'ceiling' },
   { id: 'ceiling-center', position: '0 3.8 -0.8', intensity: 2.2, distance: 7, group: 'ceiling' },
   { id: 'ceiling-right', position: '1.6 3.8 -0.8', intensity: 2.2, distance: 7, group: 'ceiling' },
-  { id: 'floor-lamp', position: '1.2 1.8 -1.2', intensity: 0.45, distance: 3.5, color: '#ffd49a' },
-  { id: 'ambient-fill', type: 'ambient', intensity: 0.35, color: '#d5dfdf' },
-  { id: 'door', targetId: 'pintu', intensity: 0.8 },
+  { id: 'floor-lamp', position: '1.2 1.8 -1.2', intensity: 0.45, distance: 3.5, color: '#ffd49a', group: 'interior' },
+  { id: 'ambient-fill', type: 'ambient', intensity: 0.35, color: '#d5dfdf', group: 'interior' },
+  { id: 'door', targetId: 'pintu', intensity: 0.8, group: 'interior' },
   { id: 'hanging-lamp', targetId: 'lampugantung', intensity: 1.0, group: 'ceiling' }
 ];
 
 AFRAME.registerComponent('room-point-lighting', {
   schema: {
-    ceilingOn: { type: 'boolean', default: false }
+    ceilingOn: { type: 'boolean', default: false },
+    interiorOn: { type: 'boolean', default: false }
   },
 
   init() {
@@ -53,11 +54,15 @@ AFRAME.registerComponent('room-point-lighting', {
 
     this.updateFrame = 0;
     this.updateCeilingLights();
+    this.updateInteriorLights();
   },
 
   update(oldData) {
     if (oldData.ceilingOn !== this.data.ceilingOn) {
       this.updateCeilingLights();
+    }
+    if (oldData.interiorOn !== this.data.interiorOn) {
+      this.updateInteriorLights();
     }
   },
 
@@ -72,6 +77,22 @@ AFRAME.registerComponent('room-point-lighting', {
         'light',
         'intensity',
         this.data.ceilingOn ? baseIntensity : 0
+      );
+    }
+  },
+
+  updateInteriorLights() {
+    for (const entry of this.lights || []) {
+      if (entry.source.group !== 'interior') continue;
+
+      const light = entry.entity;
+      const baseIntensity = Number(light.dataset.baseIntensity);
+      const dimIntensity = entry.source.type === 'ambient' ? baseIntensity * 0.15 : 0;
+
+      light.setAttribute(
+        'light',
+        'intensity',
+        this.data.interiorOn ? baseIntensity : dimIntensity
       );
     }
   },

@@ -358,7 +358,7 @@ AFRAME.registerComponent('furniture-editor', {
         const size = localBounds.getSize(new THREE.Vector3());
         const item = {
           id: entityId,
-          label: 'Meja Telepon',
+          label: 'Meja',
           role: 'table',
           source,
           entity,

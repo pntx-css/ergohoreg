@@ -1,17 +1,7 @@
-const HITBOX_TARGET_IDS = [
-  'saklar',
-  'pintu',
-  'ac',
-  'tv',
-  'speaker_kanan',
-  'speaker_kiri',
-  'TELEPHONE'
-];
-
 AFRAME.registerComponent('model-hitbox-visuals', {
   init() {
-    const geometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
-    const material = new THREE.LineBasicMaterial({
+    this.geometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+    this.material = new THREE.LineBasicMaterial({
       color: '#39ff68',
       transparent: true,
       opacity: 0.8,
@@ -19,48 +9,47 @@ AFRAME.registerComponent('model-hitbox-visuals', {
       toneMapped: false
     });
 
-    this.hitboxes = HITBOX_TARGET_IDS.map(id => {
-      const outline = new THREE.LineSegments(geometry, material);
-      outline.name = `${id}-hitbox-outline`;
-      outline.visible = false;
-      this.el.object3D.add(outline);
-      return {id, outline};
-    });
+    this.outline = new THREE.LineSegments(this.geometry, this.material);
+    this.outline.name = 'crosshair-target-hitbox-outline';
+    this.outline.visible = false;
+    this.el.object3D.add(this.outline);
     this.updateFrame = 0;
   },
 
   tick(time) {
-    if (time - this.updateFrame < 150) return;
+    if (time - this.updateFrame < 80) return;
     this.updateFrame = time;
 
     this.el.object3D.updateMatrixWorld(true);
-    for (const {id, outline} of this.hitboxes) {
-      const entity = document.getElementById(id);
-      const model = entity?.getObject3D('mesh');
-      if (!entity || !model) {
-        outline.visible = false;
-        continue;
-      }
-
-      entity.object3D.updateWorldMatrix(true, true);
-      const bounds = new THREE.Box3().setFromObject(model);
-      if (bounds.isEmpty()) {
-        outline.visible = false;
-        continue;
-      }
-
-      const center = bounds.getCenter(new THREE.Vector3());
-      const size = bounds.getSize(new THREE.Vector3()).multiplyScalar(1.015);
-      outline.position.copy(center);
-      outline.scale.copy(size);
-      outline.visible = true;
-      outline.updateMatrixWorld(true);
+    const gameplay = this.el.components['ergonomics-gameplay'];
+    const interactionPanel = document.getElementById('interaction-panel');
+    const fPopup = document.getElementById('f-interaction-popup');
+    const interactionBlocked = document.body.classList.contains('is-start-menu-open') ||
+      Boolean(interactionPanel && !interactionPanel.hidden) ||
+      Boolean(fPopup && !fPopup.hidden);
+    const target = interactionBlocked ? null : gameplay?.findTarget();
+    const targetEntity = target?.entity || target?.item?.entity;
+    if (!targetEntity) {
+      this.outline.visible = false;
+      return;
     }
+
+    targetEntity.object3D.updateWorldMatrix(true, true);
+    const bounds = new THREE.Box3().setFromObject(targetEntity.object3D);
+    if (bounds.isEmpty()) {
+      this.outline.visible = false;
+      return;
+    }
+
+    this.outline.position.copy(bounds.getCenter(new THREE.Vector3()));
+    this.outline.scale.copy(bounds.getSize(new THREE.Vector3()).multiplyScalar(1.015));
+    this.outline.visible = true;
+    this.outline.updateMatrixWorld(true);
   },
 
   remove() {
-    for (const {outline} of this.hitboxes) outline.removeFromParent();
-    this.hitboxes[0]?.outline.geometry.dispose();
-    this.hitboxes[0]?.outline.material.dispose();
+    this.outline.removeFromParent();
+    this.geometry.dispose();
+    this.material.dispose();
   }
 });

@@ -66,6 +66,14 @@ export class DesktopController {
     return this.keys;
   }
 
+  public requestPointerLock(): void {
+    this.pointerLockController.requestLock();
+  }
+
+  public exitPointerLock(): void {
+    this.pointerLockController.exitLock();
+  }
+
   public dispose(): void {
     this.clearInput();
     this.active = false;

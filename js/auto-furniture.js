@@ -734,7 +734,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
     item.bounds.getSize(this.size);
     const finalCenter = this.boxCenter(item.bounds);
     const relocated = Math.hypot(finalCenter.x - desired.x, finalCenter.z - desired.z) > 0.08;
-    item.collider = ['floor', 'air-conditioner', 'ceiling-lamp', 'switch'].includes(item.role.type) ? null : {
+    item.collider = ['floor', 'rug', 'air-conditioner', 'ceiling-lamp', 'switch'].includes(item.role.type) ? null : {
       kind: 'auto-model',
       name: entity.id,
       modelName: descriptor.filename,
@@ -746,7 +746,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       minZ: item.bounds.min.z,
       maxZ: item.bounds.max.z
     };
-    if (item.collider && role.type !== 'rug') this.shell.colliders.push(item.collider);
+    if (item.collider) this.shell.colliders.push(item.collider);
     this.placedModels.push(item);
 
     if (item.role.type === 'floor') {
