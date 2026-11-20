@@ -481,6 +481,7 @@ AFRAME.registerComponent('furniture-editor', {
         width: size.x,
         depth: size.z,
         height: size.y,
+        localCenter: localBounds.getCenter(new THREE.Vector3()),
         verticalOrigin: 'bottom',
         baseY: entity.object3D.position.y,
         floorOffset: model.bounds.min.y - worldPosition.y,
@@ -777,7 +778,8 @@ AFRAME.registerComponent('furniture-editor', {
   getItemWorldPose(item) {
     const transform = item.transform.object3D;
     const position = transform.getWorldPosition(new THREE.Vector3());
-    const quaternion = transform.getWorldQuaternion(new THREE.Quaternion());
+    const orientation = item.rotationPivotGroup || transform;
+    const quaternion = orientation.getWorldQuaternion(new THREE.Quaternion());
     const rotation = new THREE.Euler().setFromQuaternion(quaternion, 'YXZ');
     return {position, yaw: rotation.y};
   },
@@ -793,8 +795,12 @@ AFRAME.registerComponent('furniture-editor', {
       parentYaw = new THREE.Euler().setFromQuaternion(parentQuaternion, 'YXZ').y;
     }
     transform.position.copy(localPosition);
-    transform.rotation.set(0, yaw - parentYaw, 0);
+    const pivotYaw = item.rotationPivotGroup
+      ? new THREE.Euler().setFromQuaternion(item.rotationPivotGroup.quaternion, 'YXZ').y
+      : 0;
+    transform.rotation.set(0, yaw - parentYaw - pivotYaw, 0);
     item.rotationY = transform.rotation.y;
+    if (item.rotationPivotGroup) item.rotationY += pivotYaw;
     item.position = transform.position;
     transform.updateMatrix();
   },
@@ -808,12 +814,18 @@ AFRAME.registerComponent('furniture-editor', {
     const sine = Math.sin(pose.yaw);
     const halfX = Math.abs(cosine) * halfWidth + Math.abs(sine) * halfDepth + FURNITURE_CLEARANCE;
     const halfZ = Math.abs(sine) * halfWidth + Math.abs(cosine) * halfDepth + FURNITURE_CLEARANCE;
+    const pivotYaw = item.rotationPivotGroup
+      ? new THREE.Euler().setFromQuaternion(item.rotationPivotGroup.quaternion, 'YXZ').y
+      : 0;
+    const centerYaw = pose.yaw - pivotYaw;
+    const centerCosine = Math.cos(centerYaw);
+    const centerSine = Math.sin(centerYaw);
     const localCenter = item.localCenter;
     const centerX = pose.position.x + (localCenter
-      ? cosine * localCenter.x * scale.x + sine * localCenter.z * scale.z
+      ? centerCosine * localCenter.x * scale.x + centerSine * localCenter.z * scale.z
       : 0);
     const centerZ = pose.position.z + (localCenter
-      ? -sine * localCenter.x * scale.x + cosine * localCenter.z * scale.z
+      ? -centerSine * localCenter.x * scale.x + centerCosine * localCenter.z * scale.z
       : 0);
     const minY = item.verticalOrigin === 'center'
       ? pose.position.y - height / 2

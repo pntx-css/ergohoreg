@@ -316,11 +316,11 @@ AFRAME.registerComponent('auto-furniture-loader', {
     if (item.role.type === 'door') return -Math.PI / 2;
     if (item.role.type === 'switch') return Math.PI;
     if (item.role.type === 'air-conditioner') return Math.PI / 2;
-    if (item.role.type === 'sofa') return -Math.PI / 2;
+    if (item.role.type === 'sofa') return Math.PI / 2;
     if (item.role.type === 'rug') return -Math.PI / 2;
     // Rotate the speaker and TV stand on the horizontal (Y) axis.
     if (item.role.type === 'tv-stand') return -Math.PI / 2;
-    if (item.role.type === 'speaker' || item.role.type === 'speaker-pair') return -Math.PI / 2;
+    if (item.role.type === 'speaker' || item.role.type === 'speaker-pair') return Math.PI / 2;
     if (item.role.type === 'tv') return 0;
     if (item.role.type === 'chair') return Math.PI;
     if (item.role.type === 'cabinet') return -Math.PI / 2;

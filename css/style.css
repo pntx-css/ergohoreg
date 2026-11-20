@@ -172,10 +172,22 @@ body.xr-capable .a-enter-vr {
   border-radius: 10px;
   color: #eff8f7;
   background: rgb(14 27 31 / 88%);
-  font: 600 13px/1.4 system-ui, sans-serif;
+  font: 400 13px/1.45 system-ui, sans-serif;
   pointer-events: none;
   backdrop-filter: blur(8px);
 }
+
+#mission-text h2 { margin: 5px 0 6px; font-size: 16px; line-height: 1.3; }
+#mission-text h3 { margin: 10px 0 4px; color: #b7ddd0; font-size: 12px; }
+#mission-text p { margin: 0; color: #d3e2de; }
+.mission-panel__meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #c4d6d1; font-size: 11px; font-weight: 700; }
+#mission-status { padding: 3px 7px; border: 1px solid rgb(255 255 255 / 22%); border-radius: 999px; color: #ffdda0; }
+#mission-status[data-complete="true"] { border-color: #61dba1; color: #8af0bc; }
+#mission-objectives { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+#mission-objectives li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; color: #eff8f7; }
+#mission-objectives li[data-complete="true"] > span:first-child { color: #b6d5ca; }
+.mission-objective__status { color: #ffdda0; font-size: 11px; white-space: nowrap; }
+#mission-objectives li[data-complete="true"] .mission-objective__status { color: #8af0bc; }
 
 body.is-start-menu-open #mission-text {
   display: none;

@@ -1,5 +1,6 @@
 const LIGHTING_SCORES = {25: 35, 50: 75, 75: 100, 100: 40};
 const LIGHT_LEVELS = {25: 0.34, 50: 0.67, 75: 1, 100: 1.34};
+const MISSION_COUNT = 7;
 
 AFRAME.registerComponent('ergonomics-gameplay', {
   init() {
@@ -16,8 +17,11 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       phoneOn: true
     };
     this.lightOn = false;
-    this.brightness = 75;
+    this.brightness = 25;
     this.acInspected = false;
+    this.brightnessAdjusted = false;
+    this.inspectedSpeakers = new Set();
+    this.phoneInspected = false;
     this.activeTarget = null;
     this.moveItem = null;
     this.appliedTV = null;
@@ -30,6 +34,15 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.title = document.getElementById('interaction-title');
     this.controls = document.getElementById('interaction-controls');
     this.missionText = document.getElementById('mission-text');
+    this.missionTitle = document.getElementById('mission-title');
+    this.missionDescription = document.getElementById('mission-description');
+    this.missionCount = document.getElementById('mission-count');
+    this.missionStatus = document.getElementById('mission-status');
+    this.missionObjectives = document.getElementById('mission-objectives');
+    this.missionIndex = 0;
+    this.missionComplete = false;
+    this.missionAdvanceAt = 0;
+    this.missionRenderKey = '';
     this.hint = document.getElementById('gameplay-hint');
     this.crosshair = document.getElementById('crosshair');
     if (this.panel) document.body.appendChild(this.panel);
@@ -95,6 +108,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.panel?.addEventListener('click', this.onPanelClick);
     this.panel?.addEventListener('input', this.onPanelInput);
     this.applyLighting();
+    this.renderMission(this.getMissionObjectives(), false);
   },
 
   tick(time) {
@@ -106,6 +120,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       return;
     }
     this.scoringReady = true;
+    this.updateMissionProgress(time);
     const tv = this.getRuntimeModelItems(loader).find(item => item.role === 'tv') ||
       editor.items.find(item => item.role === 'tv');
     if (tv && tv !== this.appliedTV) {
@@ -119,7 +134,9 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     if (!this.panel || this.panel.hidden) this.activeTarget = target;
     this.crosshair?.classList.toggle('is-target', !!target);
     this.hint.textContent = this.rotationBlockedUntil > performance.now()
-      ? 'Rotasi dihentikan agar speaker tidak menembus furnitur.'
+      ? this.activeTarget?.kind === 'sofa'
+        ? 'Sofa tidak dapat diputar karena ruang putarnya terhalang.'
+        : 'Rotasi dihentikan agar speaker tidak menembus furnitur.'
       : this.moveItem
         ? 'Tekan F untuk menyelesaikan penataan'
         : target
@@ -230,7 +247,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       else if (item.role === 'lamp') kind = 'lamp';
       if (!kind || !item.collider) continue;
       consider(
-        {kind, label: item.label, item},
+        {kind, label: kind === 'phone-table' ? 'Meja Telepon' : item.label, item},
         new THREE.Box3(
           new THREE.Vector3(item.collider.minX, item.collider.minY, item.collider.minZ),
           new THREE.Vector3(item.collider.maxX, item.collider.maxY, item.collider.maxZ)
@@ -280,8 +297,14 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     const target = this.findTarget();
     if (!target) return;
     this.activeTarget = target;
+    if (target.kind === 'speaker') this.inspectedSpeakers.add(this.getSpeakerSide(target.item));
+    if (target.kind === 'phone') this.phoneInspected = true;
     if (target.kind === 'sofa' || target.kind === 'phone-table') {
       if (!target.item || !editor) return;
+      if (target.kind === 'sofa' && this.missionIndex === 5) {
+        this.openPanel(target);
+        return;
+      }
       editor.nearbyItem = target.item;
       editor.toggleGrab();
       this.moveItem = target.item;
@@ -320,9 +343,6 @@ AFRAME.registerComponent('ergonomics-gameplay', {
   toggleLight() {
     this.lightOn = !this.lightOn;
     this.applyLighting();
-    if (this.lightOn && this.missionText) {
-      this.missionText.textContent = 'Misi 2: Periksa dan perbaiki kondisi ergonomi ruangan.';
-    }
     this.refreshScores();
   },
 
@@ -378,10 +398,16 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     }
   },
 
+  getSpeakerSide(item) {
+    return item?.side === 'left' || item?.id === 'speaker-left' || item?.id?.includes('kiri')
+      ? 'left'
+      : 'right';
+  },
+
   stepBrightness(direction) {
     const values = [25, 50, 75, 100];
     const currentIndex = values.indexOf(this.brightness);
-    this.brightness = values[(currentIndex + direction + values.length) % values.length];
+    this.setBrightness(values[(currentIndex + direction + values.length) % values.length]);
     this.applyLighting();
     this.renderPanel();
     this.refreshScores();
@@ -526,7 +552,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         this.toggleLight();
         break;
       case 'brightness':
-        this.brightness = Number(control?.value || this.brightness);
+        this.setBrightness(Number(control?.value || this.brightness));
         this.applyLighting();
         break;
       case 'tv-power':
@@ -576,15 +602,271 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         this.moveItem = editor.grabbedItem ? target.item : null;
         break;
       case 'furniture-rotate-left':
-        editor?.rotateGrabbed(-15);
+        if (target?.kind === 'sofa' && this.missionIndex === 5) this.rotateSofaInPlace(target.item, -15);
+        else editor?.rotateGrabbed(-15);
         break;
       case 'furniture-rotate-right':
-        editor?.rotateGrabbed(15);
+        if (target?.kind === 'sofa' && this.missionIndex === 5) this.rotateSofaInPlace(target.item, 15);
+        else editor?.rotateGrabbed(15);
+        break;
+      case 'sofa-flip':
+        this.rotateSofaInPlace(target?.item, 180);
         break;
     }
     this.applyLighting();
     this.renderPanel();
     this.refreshScores();
+  },
+
+  rotateSofaInPlace(item, degrees) {
+    const editor = this.el.components['furniture-editor'];
+    if (item?.role !== 'sofa' || !editor || editor.grabbedItem) return false;
+    const transform = item.transform.object3D;
+    const previousRotationY = item.rotationY;
+    if (!item.rotationPivotGroup) {
+      const pivot = this.getEntityLocalBoundsCenter(item.entity);
+      const root = item.entity.getObject3D('mesh');
+      if (!pivot || !root) {
+        console.error(`[Gameplay] Could not create a rotation pivot for ${item.label}.`);
+        return false;
+      }
+
+      item.rotationPivotGroup = new THREE.Group();
+      item.rotationPivotGroup.position.copy(pivot);
+      transform.add(item.rotationPivotGroup);
+      item.rotationPivotGroup.attach(root);
+    }
+
+    item.rotationPivotGroup.rotation.y += THREE.MathUtils.degToRad(degrees);
+    transform.updateWorldMatrix(true, true);
+    item.rotationY += THREE.MathUtils.degToRad(degrees);
+    editor.updateFurnitureColliders();
+
+    if (!editor.isValidPlacement(item, item.collider)) {
+      item.rotationPivotGroup.rotation.y -= THREE.MathUtils.degToRad(degrees);
+      item.rotationY = previousRotationY;
+      transform.updateWorldMatrix(true, true);
+      editor.updateFurnitureColliders();
+      this.rotationBlockedUntil = performance.now() + 1600;
+      return false;
+    }
+
+    this.rotationBlockedUntil = 0;
+    this.el.object3D.updateMatrixWorld(true);
+    this.refreshScores();
+    return true;
+  },
+
+  setBrightness(value) {
+    if (!Object.prototype.hasOwnProperty.call(LIGHTING_SCORES, value)) return;
+    if (this.brightness !== value) this.brightnessAdjusted = true;
+    this.brightness = value;
+  },
+
+  getMissionScores() {
+    const scores = this.el.components['ergonomics-evaluator']?.scores || {};
+    return {
+      viewingDistance: scores.viewingDistance ?? 40,
+      noiseControl: scores.noiseControl ?? 30,
+      lighting: this.getLightingScore(),
+      comfort: this.getComfortScore(),
+      roomLayout: scores.roomLayout ?? 50,
+      final: this.el.components['ergonomics-evaluator']?.finalScore ?? 36
+    };
+  },
+
+  isSpeakerFacingSofa(speaker, sofa) {
+    if (!speaker?.transform?.object3D || !speaker.collider || !sofa?.collider) return false;
+    const speakerCenter = new THREE.Vector3(
+      (speaker.collider.minX + speaker.collider.maxX) / 2,
+      (speaker.collider.minY + speaker.collider.maxY) / 2,
+      (speaker.collider.minZ + speaker.collider.maxZ) / 2
+    );
+    const sofaCenter = new THREE.Vector3(
+      (sofa.collider.minX + sofa.collider.maxX) / 2,
+      (sofa.collider.minY + sofa.collider.maxY) / 2,
+      (sofa.collider.minZ + sofa.collider.maxZ) / 2
+    );
+    const toSofa = sofaCenter.sub(speakerCenter);
+    toSofa.y = 0;
+    if (toSofa.lengthSq() < 0.001) return false;
+    toSofa.normalize();
+
+    const rotation = speaker.transform.object3D.getWorldQuaternion(new THREE.Quaternion());
+    const yaw = new THREE.Euler().setFromQuaternion(rotation, 'YXZ').y;
+    const facing = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    return facing.dot(toSofa) >= 0.7;
+  },
+
+  isSofaTurnedAround(sofa) {
+    if (!Number.isFinite(sofa?.rotationY) || !Number.isFinite(sofa?.originalRotationY)) return false;
+    const delta = Math.atan2(
+      Math.sin(sofa.rotationY - sofa.originalRotationY),
+      Math.cos(sofa.rotationY - sofa.originalRotationY)
+    );
+    return Math.PI - Math.abs(delta) <= Math.PI / 4;
+  },
+
+  getMissionObjectives() {
+    const scores = this.getMissionScores();
+    const editor = this.el.components['furniture-editor'];
+    const sofa = editor?.items.find(item => item.role === 'sofa');
+    const missionSofa = editor?.items.find(item => item.role === 'sofa' && item.autoModel) || sofa;
+    const speakers = this.missionIndex === 3
+      ? this.getRuntimeModelItems().filter(item => item.role === 'speaker')
+      : [];
+    const leftSpeaker = speakers.find(item => this.getSpeakerSide(item) === 'left');
+    const rightSpeaker = speakers.find(item => this.getSpeakerSide(item) === 'right');
+    const speakersEqual = this.audioState.speakerLeftVolume === this.audioState.speakerRightVolume;
+    const speakerVolumesCalibrated = speakersEqual &&
+      this.audioState.speakerLeftVolume <= 60 &&
+      this.audioState.speakerRightVolume <= 60;
+    const allMetricsReady = scores.viewingDistance >= 75 &&
+      scores.noiseControl >= 75 &&
+      scores.lighting >= 75 &&
+      scores.comfort >= 75 &&
+      scores.roomLayout >= 75;
+
+    switch (this.missionIndex) {
+      case 0:
+        return [
+          {label: 'Arahkan crosshair ke saklar lampu dan tekan F untuk menyalakan pencahayaan utama.', done: this.lightOn}
+        ];
+      case 1:
+        return [
+          {label: 'Arahkan crosshair ke lampu plafon, tekan F, lalu pilih tingkat brightness.', done: this.brightnessAdjusted},
+          {label: 'Capai Lighting Score minimal 75.', done: scores.lighting >= 75}
+        ];
+      case 2:
+        return [
+          {label: 'Arahkan crosshair ke AC dan tekan F untuk memeriksa pengaturannya.', done: this.acInspected},
+          {label: 'Pilih Silent Mode pada panel AC untuk mengurangi kebisingan.', done: this.audioState.acOn && this.audioState.acMode === 'silent'}
+        ];
+      case 3:
+        return [
+          {label: 'Periksa speaker kiri dengan mengarahkannya lalu menekan F.', done: this.inspectedSpeakers.has('left')},
+          {label: 'Periksa speaker kanan dengan mengarahkannya lalu menekan F.', done: this.inspectedSpeakers.has('right')},
+          {
+            label: 'Samakan volume speaker kiri dan kanan, maksimal 60% untuk masing-masing.',
+            done: speakerVolumesCalibrated
+          },
+          {
+            label: 'Putar speaker kiri ke arah area sofa dengan tombol Putar atau Q/R.',
+            done: this.isSpeakerFacingSofa(leftSpeaker, sofa)
+          },
+          {
+            label: 'Putar speaker kanan ke arah area sofa dengan tombol Putar atau Q/R.',
+            done: this.isSpeakerFacingSofa(rightSpeaker, sofa)
+          }
+        ];
+      case 4:
+        return [
+          {label: 'Periksa telepon dan matikan jika masih aktif.', done: this.phoneInspected && !this.audioState.phoneOn},
+          {label: 'Pastikan TV mati; turunkan volume speaker kiri dan kanan bila perlu.', done: !this.audioState.tvOn},
+          {label: 'Tingkatkan Noise Control Score hingga minimal 75.', done: scores.noiseControl >= 75}
+        ];
+      case 5:
+        return [
+          {
+            label: 'Arahkan ke sofa, tekan F, lalu pilih Putar 180° menghadap TV. Sofa tetap di posisinya.',
+            done: !editor?.grabbedItem &&
+              this.isSofaTurnedAround(missionSofa)
+          }
+        ];
+      case 6:
+        return [
+          {
+            label: 'Capai semua lima skor minimal 75, atau Final Ergonomic Score minimal 80.',
+            done: allMetricsReady || scores.final >= 80
+          },
+        ];
+      default:
+        return [];
+    }
+  },
+
+  getMissionContent() {
+    return [
+      {
+        title: 'Nyalakan Pencahayaan Utama',
+        description: 'Ruangan terlihat cukup redup sehingga proses evaluasi belum dapat dilakukan dengan optimal. Cari saklar lampu dan nyalakan pencahayaan utama.'
+      },
+      {
+        title: 'Sesuaikan Pencahayaan Ruangan',
+        description: 'Lampu sudah menyala, namun tingkat pencahayaan belum tentu nyaman. Periksa lampu plafon dan sesuaikan brightness hingga Lighting Score minimal 75. Lampu mulai dari tingkat yang belum ideal.'
+      },
+      {
+        title: 'Kurangi Kebisingan AC',
+        description: 'AC masih berjalan pada Mode Turbo sehingga menghasilkan suara yang mengganggu. Periksa AC dan ubah ke Silent Mode agar tingkat kebisingan ruangan berkurang.'
+      },
+      {
+        title: 'Kalibrasi Sistem Audio',
+        description: 'Volume speaker kiri dan kanan berbeda, dan keduanya belum menghadap area menonton. Samakan volumenya dan putar kedua speaker agar mengarah ke area sofa.'
+      },
+      {
+        title: 'Kurangi Gangguan Kebisingan',
+        description: 'Periksa telepon, TV, dan volume speaker. Matikan perangkat yang tidak diperlukan atau turunkan volumenya hingga Noise Control Score minimal 75.'
+      },
+      {
+        title: 'Putar Sofa Menghadap TV',
+        description: 'Sofa membelakangi TV. Buka panel sofa dan putar 180° agar menghadap TV tanpa memindahkan posisinya. Misi ini tidak memakai Viewing Distance Score.'
+      },
+      {
+        title: 'Evaluasi Ergonomi Selesai',
+        description: 'Seluruh komponen ruangan telah diperiksa dan disesuaikan. Selesaikan evaluasi dengan semua lima skor minimal 75, atau capai Final Ergonomic Score minimal 80.'
+      }
+    ][this.missionIndex];
+  },
+
+  renderMission(objectives, complete) {
+    if (!this.missionText || !this.missionTitle || !this.missionDescription ||
+        !this.missionCount || !this.missionStatus || !this.missionObjectives) return;
+    const mission = this.getMissionContent();
+    const renderKey = JSON.stringify({
+      index: this.missionIndex,
+      complete,
+      objectives: objectives.map(objective => objective.done)
+    });
+    if (renderKey === this.missionRenderKey) return;
+    this.missionRenderKey = renderKey;
+    this.missionCount.textContent = `Misi ${this.missionIndex + 1} dari ${MISSION_COUNT}`;
+    this.missionTitle.textContent = mission.title;
+    this.missionDescription.textContent = mission.description;
+    this.missionStatus.textContent = complete ? 'Selesai' : 'Belum Selesai';
+    this.missionStatus.dataset.complete = String(complete);
+    this.missionObjectives.replaceChildren();
+    for (const objective of objectives) {
+      const item = document.createElement('li');
+      const text = document.createElement('span');
+      text.textContent = objective.label;
+      const status = document.createElement('span');
+      status.className = 'mission-objective__status';
+      status.textContent = objective.done ? 'Selesai' : 'Belum';
+      item.dataset.complete = String(objective.done);
+      item.append(text, status);
+      this.missionObjectives.appendChild(item);
+    }
+  },
+
+  updateMissionProgress(time) {
+    if (this.missionComplete) {
+      if (this.missionAdvanceAt && time >= this.missionAdvanceAt) {
+        this.missionIndex++;
+        this.missionComplete = false;
+        this.missionAdvanceAt = 0;
+        this.missionRenderKey = '';
+      } else {
+        this.renderMission(this.getMissionObjectives(), true);
+        return;
+      }
+    }
+
+    const objectives = this.getMissionObjectives();
+    if (objectives.every(objective => objective.done)) {
+      this.missionComplete = true;
+      this.missionAdvanceAt = this.missionIndex < MISSION_COUNT - 1 ? time + 1600 : 0;
+    }
+    this.renderMission(objectives, this.missionComplete);
   },
 
   makeButton(label, action, active = false, toggle = false) {
@@ -646,7 +928,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       ));
       this.addVolumeControl('Volume TV', 'tvVolume', this.audioState.tvVolume);
     } else if (kind === 'speaker') {
-      const isLeft = item.side === 'left' || item.id === 'speaker-left' || item.id?.includes('kiri');
+      const isLeft = this.getSpeakerSide(item) === 'left';
       const key = isLeft ? 'speakerLeftVolume' : 'speakerRightVolume';
       this.controls.appendChild(this.makeButton(
         `Power: ${this.audioState[isLeft ? 'speakerLeftOn' : 'speakerRightOn'] ? 'ON' : 'OFF'}`,
@@ -679,11 +961,21 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     } else if (kind === 'sofa' || kind === 'phone-table') {
       const editor = this.el.components['furniture-editor'];
       const isMoving = editor?.grabbedItem === item;
-      this.controls.append(
-        this.makeButton(isMoving ? 'Selesai Move Mode' : 'Move Mode', 'furniture-move', isMoving, true),
-        this.makeButton('Rotate Left · 15°', 'furniture-rotate-left'),
-        this.makeButton('Rotate Right · 15°', 'furniture-rotate-right')
-      );
+      if (kind === 'sofa' && this.missionIndex === 5) {
+        const title = document.createElement('p');
+        title.className = 'interaction-control__label';
+        title.textContent = 'Putar sofa tanpa mengubah posisinya.';
+        this.controls.append(
+          title,
+          this.makeButton('Putar 180° menghadap TV', 'sofa-flip')
+        );
+      } else {
+        this.controls.append(
+          this.makeButton(isMoving ? 'Selesai Move Mode' : 'Move Mode', 'furniture-move', isMoving, true),
+          this.makeButton('Rotate Left · 15°', 'furniture-rotate-left'),
+          this.makeButton('Rotate Right · 15°', 'furniture-rotate-right')
+        );
+      }
     }
   },
 
