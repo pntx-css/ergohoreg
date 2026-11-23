@@ -2,8 +2,7 @@ const ERGONOMY_METRICS = [
   ['viewingDistance', 'Viewing Distance'],
   ['noiseControl', 'Noise Control'],
   ['lighting', 'Lighting'],
-  ['comfort', 'Comfort'],
-  ['roomLayout', 'Room Layout']
+  ['comfort', 'Comfort']
 ];
 
 const scoreClamp = value => Math.max(0, Math.min(100, Math.round(value)));
@@ -33,10 +32,9 @@ AFRAME.registerComponent('ergonomics-evaluator', {
       viewingDistance: 40,
       noiseControl: 30,
       lighting: 20,
-      comfort: 40,
-      roomLayout: 50
+      comfort: 100
     };
-    this.finalScore = 36;
+    this.finalScore = 48;
     this.baselines = null;
     this.valueAnimations = new WeakMap();
     this.interactionHint = '';
@@ -64,12 +62,17 @@ AFRAME.registerComponent('ergonomics-evaluator', {
   },
 
   tick() {
-    if (this.panelAttached) return;
-    this.camera = document.getElementById('player-camera');
-    if (!this.camera) return;
-    this.camera.object3D.add(this.vrPanel);
-    this.vrPanel.visible = this.el.is('vr-mode');
-    this.panelAttached = true;
+    if (!this.panelAttached) {
+      this.camera = document.getElementById('player-camera');
+      if (this.camera) {
+        this.camera.object3D.add(this.vrPanel);
+        this.vrPanel.visible = this.el.is('vr-mode');
+        this.panelAttached = true;
+      }
+    }
+
+    const editor = this.el.components['furniture-editor'];
+    this.updateScores(editor?.items || []);
   },
 
   setInteractionHint(message) {
@@ -78,29 +81,21 @@ AFRAME.registerComponent('ergonomics-evaluator', {
     this.renderVRPanel();
   },
 
-  updateScores(items, shell) {
+  updateScores(items) {
     const now = performance.now();
     if (now - this.lastUpdate < 120) return;
     this.lastUpdate = now;
     const gameplay = this.el.components['ergonomics-gameplay'];
     if (!gameplay?.readyForScoring(this.el.components['furniture-editor'], this.el.components['auto-furniture-loader'])) return;
-
-    if (!this.baselines) {
-      this.baselines = {
-        viewingDistance: this.scoreViewingDistance(items),
-        noiseControl: this.scoreNoiseControl(items, gameplay, this.el.components['auto-furniture-loader']),
-        roomLayout: this.scoreRoomLayout(shell, items)
-      };
-      this.renderScores();
-      return;
-    }
+    const loader = this.el.components['auto-furniture-loader'];
+    const noiseControl = this.scoreNoiseControl(items, gameplay, loader);
+    if (!this.baselines) this.baselines = {noiseControl};
 
     this.scores = {
-      viewingDistance: scoreClamp(40 + this.scoreViewingDistance(items) - this.baselines.viewingDistance),
-      noiseControl: scoreClamp(30 + this.scoreNoiseControl(items, gameplay, this.el.components['auto-furniture-loader']) - this.baselines.noiseControl),
+      viewingDistance: this.scoreViewingDistance(items),
+      noiseControl: scoreClamp(30 + noiseControl - this.baselines.noiseControl),
       lighting: gameplay.getLightingScore(),
-      comfort: gameplay.getComfortScore(),
-      roomLayout: scoreClamp(50 + this.scoreRoomLayout(shell, items) - this.baselines.roomLayout)
+      comfort: gameplay.getComfortScore()
     };
     this.finalScore = scoreClamp(Object.values(this.scores).reduce((sum, score) => sum + score, 0) / ERGONOMY_METRICS.length);
     this.renderScores();
@@ -110,11 +105,10 @@ AFRAME.registerComponent('ergonomics-evaluator', {
     const tv = items.find(item => item.role === 'tv');
     const sofa = items.find(item => item.role === 'sofa');
     if (!tv || !sofa) return 70;
-    const distance = itemCenter(tv).distanceTo(itemCenter(sofa));
-    const screenHeight = itemCenter(tv).y;
-    const distanceScore = 100 - Math.abs(distance - 2.8) * 35;
-    const heightScore = 100 - Math.abs(screenHeight - 1.1) * 55;
-    return scoreClamp(distanceScore * 0.7 + heightScore * 0.3);
+    const tvCenter = itemCenter(tv);
+    const sofaCenter = itemCenter(sofa);
+    const distance = Math.hypot(tvCenter.x - sofaCenter.x, tvCenter.z - sofaCenter.z);
+    return scoreClamp(100 - Math.abs(distance - 2.8) * 35);
   },
 
   scoreNoiseControl(items, gameplay, loader) {
@@ -146,60 +140,6 @@ AFRAME.registerComponent('ergonomics-evaluator', {
       }
     }
     return scoreClamp(100 - penalty);
-  },
-
-  scoreRoomLayout(shell, items) {
-    const bounds = shell.playerBounds;
-    const layoutColliders = items
-      .filter(item => item.role === 'sofa' || item.id === 'MEJA')
-      .map(item => item.collider);
-    const cell = 0.35;
-    const cols = Math.max(1, Math.floor((bounds.maxX - bounds.minX) / cell));
-    const rows = Math.max(1, Math.floor((bounds.maxZ - bounds.minZ) / cell));
-    const blocked = new Uint8Array(cols * rows);
-    let freeCount = 0;
-    let laneCells = 0;
-    let clearLaneCells = 0;
-    for (let z = 0; z < rows; z++) {
-      for (let x = 0; x < cols; x++) {
-        const worldX = bounds.minX + (x + 0.5) * cell;
-        const worldZ = bounds.minZ + (z + 0.5) * cell;
-        const occupied = layoutColliders.some(box => worldX >= box.minX && worldX <= box.maxX && worldZ >= box.minZ && worldZ <= box.maxZ);
-        if (occupied) blocked[z * cols + x] = 1;
-        else freeCount++;
-        if (worldX >= -0.45 && worldX <= 0.45 && worldZ >= 0.45 && worldZ <= 1.85) {
-          laneCells++;
-          if (!occupied) clearLaneCells++;
-        }
-      }
-    }
-
-    const visited = new Uint8Array(blocked.length);
-    let largestArea = 0;
-    for (let start = 0; start < blocked.length; start++) {
-      if (blocked[start] || visited[start]) continue;
-      let area = 0;
-      const queue = [start];
-      visited[start] = 1;
-      for (let cursor = 0; cursor < queue.length; cursor++) {
-        const current = queue[cursor];
-        area++;
-        const x = current % cols;
-        const z = Math.floor(current / cols);
-        const neighbors = [x > 0 ? current - 1 : -1, x + 1 < cols ? current + 1 : -1, z > 0 ? current - cols : -1, z + 1 < rows ? current + cols : -1];
-        for (const next of neighbors) {
-          if (next < 0 || blocked[next] || visited[next]) continue;
-          visited[next] = 1;
-          queue.push(next);
-        }
-      }
-      largestArea = Math.max(largestArea, area);
-    }
-    if (!freeCount) return 0;
-    const freeRatio = freeCount / blocked.length;
-    const connectedRatio = largestArea / freeCount;
-    const clearLaneRatio = laneCells ? clearLaneCells / laneCells : 1;
-    return scoreClamp(100 * (freeRatio * 0.25 + connectedRatio * 0.5 + clearLaneRatio * 0.25));
   },
 
   renderScores() {

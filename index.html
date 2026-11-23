@@ -189,19 +189,13 @@
 
       <div class="metric-row" data-metric="comfort">
         <span>Comfort</span>
-        <strong data-value="comfort">40%</strong>
-        <div class="metric-track" role="progressbar" aria-label="Comfort" aria-valuemin="0" aria-valuemax="100" aria-valuenow="40"><i data-bar="comfort"></i></div>
-      </div>
-
-      <div class="metric-row" data-metric="roomLayout">
-        <span>Room Layout</span>
-        <strong data-value="roomLayout">50%</strong>
-        <div class="metric-track" role="progressbar" aria-label="Room Layout" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><i data-bar="roomLayout"></i></div>
+        <strong data-value="comfort">100%</strong>
+        <div class="metric-track" role="progressbar" aria-label="Comfort" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i data-bar="comfort"></i></div>
       </div>
 
       <div class="final-score">
         <span>Final Ergonomic Score</span>
-        <strong data-final-score>36%</strong>
+        <strong data-final-score>48%</strong>
         <span data-final-status role="status" aria-live="polite">Perlu Perbaikan</span>
       </div>
     </section>
@@ -220,6 +214,23 @@
       </div>
       <div id="interaction-controls" class="interaction-controls"></div>
     </aside>
+    <section
+      id="door-confirmation-dialog"
+      class="door-confirmation-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="door-confirmation-title"
+      hidden
+    >
+      <div class="door-confirmation-dialog__panel">
+        <p>ERGOHOREG</p>
+        <h2 id="door-confirmation-title">Apakah Anda ingin pergi ke ErgoSim?</h2>
+        <div class="door-confirmation-dialog__actions">
+          <button type="button" data-action="door-confirm">Iya</button>
+          <button type="button" data-action="door-cancel">Tidak</button>
+        </div>
+      </div>
+    </section>
     <p id="gameplay-hint" role="status" aria-live="polite"></p>
     <div id="interaction-hint" role="status" hidden></div>
     <div id="controller-status" role="status" aria-live="polite" hidden></div>
