@@ -1,6 +1,7 @@
 const LIGHTING_SCORES = {25: 35, 50: 75, 75: 100, 100: 40};
 const LIGHT_LEVELS = {25: 0.34, 50: 0.67, 75: 1, 100: 1.34};
 const MISSION_COUNT = 7;
+const ERGOSIM_URL = 'https://projek-2-enuma.vercel.app/';
 
 AFRAME.registerComponent('ergonomics-gameplay', {
   init() {
@@ -45,9 +46,17 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.missionRenderKey = '';
     this.hint = document.getElementById('gameplay-hint');
     this.crosshair = document.getElementById('crosshair');
+    this.doorPopup = document.getElementById('door-confirmation-dialog');
+    this.doorPopupHadPointerLock = false;
     if (this.panel) document.body.appendChild(this.panel);
     this.onKeyDown = event => {
       if (document.body.classList.contains('is-start-menu-open')) return;
+      if (this.doorPopup && !this.doorPopup.hidden) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (event.code === 'Escape') this.closeDoorPopup();
+        return;
+      }
       const panelOpen = !!this.panel && !this.panel.hidden;
       const target = this.activeTarget;
       if (panelOpen && event.code === 'Escape') {
@@ -96,6 +105,54 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       event.preventDefault();
       this.applyAction(button.dataset.action, button);
     };
+    this.onCanvasClick = event => {
+      const canvas = this.el.canvas;
+      const isPointerLocked = document.pointerLockElement === canvas;
+      if (
+        !canvas ||
+        (!isPointerLocked && event.target !== canvas) ||
+        document.body.classList.contains('is-start-menu-open') ||
+        (this.doorPopup && !this.doorPopup.hidden)
+      ) return;
+
+      const loader = this.el.components['auto-furniture-loader'];
+      const door = loader?.placedModels.find(item => item.role.type === 'door' && item.collider);
+      if (!door?.collider) return;
+
+      const camera = document.getElementById('player-camera')?.getObject3D('camera');
+      if (!camera) return;
+
+      const bounds = canvas.getBoundingClientRect();
+      const pointer = isPointerLocked
+        ? new THREE.Vector2(0, 0)
+        : new THREE.Vector2(
+            ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+            -((event.clientY - bounds.top) / bounds.height) * 2 + 1
+          );
+      const raycaster = new THREE.Raycaster();
+      this.el.object3D.updateMatrixWorld(true);
+      raycaster.setFromCamera(pointer, camera);
+      const collider = door.collider;
+      const doorBox = new THREE.Box3(
+        new THREE.Vector3(collider.minX, collider.minY, collider.minZ),
+        new THREE.Vector3(collider.maxX, collider.maxY, collider.maxZ)
+      );
+      if (!raycaster.ray.intersectBox(doorBox, new THREE.Vector3())) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.openDoorPopup();
+    };
+    this.onDoorPopupClick = event => {
+      const button = event.target.closest('button[data-action]');
+      if (!button || !this.doorPopup?.contains(button)) return;
+      event.preventDefault();
+      if (button.dataset.action === 'door-confirm') {
+        window.location.assign(ERGOSIM_URL);
+      } else {
+        this.closeDoorPopup(true);
+      }
+    };
     this.onPanelInput = event => {
       const input = event.target;
       if (!(input instanceof HTMLInputElement) || input.type !== 'range') return;
@@ -105,8 +162,10 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       if (output) output.value = `${value}%`;
     };
     window.addEventListener('keydown', this.onKeyDown, true);
+    window.addEventListener('click', this.onCanvasClick, true);
     this.panel?.addEventListener('click', this.onPanelClick);
     this.panel?.addEventListener('input', this.onPanelInput);
+    this.doorPopup?.addEventListener('click', this.onDoorPopupClick);
     this.applyLighting();
     this.renderMission(this.getMissionObjectives(), false);
   },
@@ -225,14 +284,14 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       : camera.object3D.getWorldDirection(new THREE.Vector3()).negate();
     const ray = new THREE.Ray(origin, direction);
     let nearest = null;
-    let nearestDistance = 3.5;
+    let nearestDistance = Infinity;
 
-    const consider = (target, box) => {
+    const consider = (target, box, maxDistance = 3.5) => {
       if (!box || box.isEmpty()) return;
       const hit = ray.intersectBox(box, new THREE.Vector3());
       if (!hit) return;
       const distance = origin.distanceTo(hit);
-      if (distance < nearestDistance) {
+      if (distance < maxDistance && distance < nearestDistance) {
         nearest = target;
         nearestDistance = distance;
       }
@@ -266,6 +325,19 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       );
     }
 
+    const door = this.el.components['auto-furniture-loader']?.placedModels
+      .find(item => item.role.type === 'door' && item.collider);
+    if (door?.collider) {
+      consider(
+        {kind: 'door', label: 'Pintu', item: door},
+        new THREE.Box3(
+          new THREE.Vector3(door.collider.minX, door.collider.minY, door.collider.minZ),
+          new THREE.Vector3(door.collider.maxX, door.collider.maxY, door.collider.maxZ)
+        ),
+        Infinity
+      );
+    }
+
     const entityTargets = [
       {selector: '#saklar, [data-model-role="switch"]', kind: 'switch', label: 'Saklar Lampu'},
       {selector: '#ac, [data-model-role="air-conditioner"]', kind: 'ac', label: 'AC'},
@@ -284,6 +356,28 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     return nearest;
   },
 
+  openDoorPopup() {
+    if (!this.doorPopup) return;
+    this.doorPopupHadPointerLock = document.pointerLockElement === this.el.canvas;
+    if (this.doorPopupHadPointerLock) {
+      document.getElementById('player-rig')
+        ?.components['fps-controls']?.desktopController?.exitPointerLock();
+      if (document.pointerLockElement) document.exitPointerLock();
+    }
+    this.doorPopup.hidden = false;
+    this.doorPopup.querySelector('button[data-action="door-confirm"]')?.focus();
+  },
+
+  closeDoorPopup(restorePointerLock = false) {
+    if (!this.doorPopup) return;
+    this.doorPopup.hidden = true;
+    if (restorePointerLock && this.doorPopupHadPointerLock) {
+      document.getElementById('player-rig')
+        ?.components['fps-controls']?.desktopController?.requestPointerLock();
+    }
+    this.doorPopupHadPointerLock = false;
+  },
+
   interact() {
     if (!this.scoringReady) return;
     const editor = this.el.components['furniture-editor'];
@@ -297,6 +391,10 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     const target = this.findTarget();
     if (!target) return;
     this.activeTarget = target;
+    if (target.kind === 'door') {
+      this.openDoorPopup();
+      return;
+    }
     if (target.kind === 'speaker') this.inspectedSpeakers.add(this.getSpeakerSide(target.item));
     if (target.kind === 'phone') this.phoneInspected = true;
     if (target.kind === 'sofa' || target.kind === 'phone-table') {
@@ -981,8 +1079,10 @@ AFRAME.registerComponent('ergonomics-gameplay', {
 
   remove() {
     window.removeEventListener('keydown', this.onKeyDown, true);
+    window.removeEventListener('click', this.onCanvasClick, true);
     this.panel?.removeEventListener('click', this.onPanelClick);
     this.panel?.removeEventListener('input', this.onPanelInput);
+    this.doorPopup?.removeEventListener('click', this.onDoorPopupClick);
     document.body.classList.remove('is-interaction-panel-open');
   }
 });

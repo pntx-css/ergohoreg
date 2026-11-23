@@ -214,6 +214,23 @@
       </div>
       <div id="interaction-controls" class="interaction-controls"></div>
     </aside>
+    <section
+      id="door-confirmation-dialog"
+      class="door-confirmation-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="door-confirmation-title"
+      hidden
+    >
+      <div class="door-confirmation-dialog__panel">
+        <p>ERGOHOREG</p>
+        <h2 id="door-confirmation-title">Apakah Anda ingin pergi ke ErgoSim?</h2>
+        <div class="door-confirmation-dialog__actions">
+          <button type="button" data-action="door-confirm">Iya</button>
+          <button type="button" data-action="door-cancel">Tidak</button>
+        </div>
+      </div>
+    </section>
     <p id="gameplay-hint" role="status" aria-live="polite"></p>
     <div id="interaction-hint" role="status" hidden></div>
     <div id="controller-status" role="status" aria-live="polite" hidden></div>
