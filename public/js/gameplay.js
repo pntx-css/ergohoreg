@@ -1,6 +1,6 @@
 const LIGHTING_SCORES = {25: 35, 50: 75, 75: 100, 100: 40};
 const LIGHT_LEVELS = {25: 0.34, 50: 0.67, 75: 1, 100: 1.34};
-const MISSION_COUNT = 7;
+const MISSION_COUNT = 6;
 
 AFRAME.registerComponent('ergonomics-gameplay', {
   init() {
@@ -28,6 +28,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.lastTargetCheck = 0;
     this.rotationBlockedUntil = 0;
     this.panelHadPointerLock = false;
+    this.panelPreviousFocus = null;
     this.scoringReady = false;
     this.runtimeItems = new WeakMap();
     this.panel = document.getElementById('interaction-panel');
@@ -43,6 +44,8 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.missionComplete = false;
     this.missionAdvanceAt = 0;
     this.missionRenderKey = '';
+    this.gameCompleted = false;
+    this.completionPopup = document.getElementById('game-completion-popup');
     this.hint = document.getElementById('gameplay-hint');
     this.crosshair = document.getElementById('crosshair');
     if (this.panel) document.body.appendChild(this.panel);
@@ -55,8 +58,10 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         this.applyAction('close');
         return;
       }
+      if (event.target instanceof HTMLElement &&
+          event.target.closest('input, select, textarea, button, [contenteditable="true"]')) return;
       if (event.code === 'KeyF') {
-        if (event.repeat || (event.target instanceof HTMLElement && /^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName))) return;
+        if (event.repeat) return;
         event.preventDefault();
         if (panelOpen && target?.kind === 'lamp') this.stepBrightness(1);
         else if (panelOpen && target?.kind === 'ac' && this.acInspected) {
@@ -327,14 +332,19 @@ AFRAME.registerComponent('ergonomics-gameplay', {
   },
 
   openPanel(target) {
+    const panelWasOpen = !!this.panel && !this.panel.hidden;
+    if (!panelWasOpen) {
+      this.panelPreviousFocus = document.activeElement;
+      this.panelHadPointerLock = document.pointerLockElement === this.el.canvas;
+    }
     this.activeTarget = target;
     if (this.panel) this.panel.hidden = false;
     document.body.classList.add('is-interaction-panel-open');
-    this.panelHadPointerLock = document.pointerLockElement === this.el.canvas;
     if (this.panelHadPointerLock) {
-      document.getElementById('player-rig')
-        ?.components['fps-controls']?.desktopController?.exitPointerLock();
-      if (document.pointerLockElement) document.exitPointerLock();
+      const desktopController = document.getElementById('player-rig')
+        ?.components['fps-controls']?.desktopController;
+      if (desktopController) desktopController.exitPointerLock();
+      else if (document.pointerLockElement) document.exitPointerLock();
     }
     this.renderPanel();
     this.panel?.querySelector('button[data-action="close"]')?.focus();
@@ -542,11 +552,21 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       case 'close':
         if (this.panel) this.panel.hidden = true;
         document.body.classList.remove('is-interaction-panel-open');
-        if (this.panelHadPointerLock && control) {
+        if (this.panelHadPointerLock) {
           document.getElementById('player-rig')
             ?.components['fps-controls']?.desktopController?.requestPointerLock();
         }
         this.panelHadPointerLock = false;
+        const focusTarget = this.panelPreviousFocus instanceof HTMLElement &&
+          this.panelPreviousFocus !== document.body &&
+          this.panelPreviousFocus.isConnected &&
+          !this.panel?.contains(this.panelPreviousFocus) &&
+          !this.panelPreviousFocus.closest('[hidden]') &&
+          getComputedStyle(this.panelPreviousFocus).visibility !== 'hidden'
+          ? this.panelPreviousFocus
+          : this.el.canvas;
+        focusTarget?.focus({preventScroll: true});
+        this.panelPreviousFocus = null;
         return;
       case 'light-toggle':
         this.toggleLight();
@@ -666,12 +686,8 @@ AFRAME.registerComponent('ergonomics-gameplay', {
   getMissionScores() {
     const scores = this.el.components['ergonomics-evaluator']?.scores || {};
     return {
-      viewingDistance: scores.viewingDistance ?? 40,
       noiseControl: scores.noiseControl ?? 30,
-      lighting: this.getLightingScore(),
-      comfort: this.getComfortScore(),
-      roomLayout: scores.roomLayout ?? 50,
-      final: this.el.components['ergonomics-evaluator']?.finalScore ?? 36
+      lighting: this.getLightingScore()
     };
   },
 
@@ -721,12 +737,6 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     const speakerVolumesCalibrated = speakersEqual &&
       this.audioState.speakerLeftVolume <= 60 &&
       this.audioState.speakerRightVolume <= 60;
-    const allMetricsReady = scores.viewingDistance >= 75 &&
-      scores.noiseControl >= 75 &&
-      scores.lighting >= 75 &&
-      scores.comfort >= 75 &&
-      scores.roomLayout >= 75;
-
     switch (this.missionIndex) {
       case 0:
         return [
@@ -773,13 +783,6 @@ AFRAME.registerComponent('ergonomics-gameplay', {
               this.isSofaTurnedAround(missionSofa)
           }
         ];
-      case 6:
-        return [
-          {
-            label: 'Capai semua lima skor minimal 75, atau Final Ergonomic Score minimal 80.',
-            done: allMetricsReady || scores.final >= 80
-          },
-        ];
       default:
         return [];
     }
@@ -808,12 +811,8 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         description: 'Periksa telepon, TV, dan volume speaker. Matikan perangkat yang tidak diperlukan atau turunkan volumenya hingga Noise Control Score minimal 75.'
       },
       {
-        title: 'Putar Sofa Menghadap TV',
+        title: 'Perbaiki Posisi Sofa',
         description: 'Sofa membelakangi TV. Buka panel sofa dan putar 180° agar menghadap TV tanpa memindahkan posisinya. Misi ini tidak memakai Viewing Distance Score.'
-      },
-      {
-        title: 'Evaluasi Ergonomi Selesai',
-        description: 'Seluruh komponen ruangan telah diperiksa dan disesuaikan. Selesaikan evaluasi dengan semua lima skor minimal 75, atau capai Final Ergonomic Score minimal 80.'
       }
     ][this.missionIndex];
   },
@@ -849,6 +848,8 @@ AFRAME.registerComponent('ergonomics-gameplay', {
   },
 
   updateMissionProgress(time) {
+    if (this.gameCompleted) return;
+
     if (this.missionComplete) {
       if (this.missionAdvanceAt && time >= this.missionAdvanceAt) {
         this.missionIndex++;
@@ -864,7 +865,17 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     const objectives = this.getMissionObjectives();
     if (objectives.every(objective => objective.done)) {
       this.missionComplete = true;
-      this.missionAdvanceAt = this.missionIndex < MISSION_COUNT - 1 ? time + 1600 : 0;
+      if (this.missionIndex === MISSION_COUNT - 1) {
+        this.gameCompleted = true;
+        if (this.completionPopup) {
+          this.completionPopup.hidden = false;
+          window.setTimeout(() => {
+            this.completionPopup.hidden = true;
+          }, 3000);
+        }
+      } else {
+        this.missionAdvanceAt = time + 1600;
+      }
     }
     this.renderMission(objectives, this.missionComplete);
   },
