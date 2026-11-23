@@ -355,11 +355,12 @@ body.is-start-menu-open #gameplay-hint {
 .interaction-panel {
   position: fixed;
   z-index: 12;
-  right: 14px;
-  bottom: 86px;
+  top: 50%;
+  left: 50%;
   width: min(320px, calc(100vw - 28px));
   max-height: min(60vh, 520px);
   overflow: auto;
+  transform: translate(-50%, -50%);
   padding: 14px;
   border: 1px solid rgb(255 255 255 / 28%);
   border-radius: 12px;
@@ -545,10 +546,6 @@ body.is-start-menu-open #gameplay-hint {
   }
 
   .interaction-panel {
-    right: 12px;
-    bottom: 118px;
-    left: 12px;
-    width: auto;
     max-height: 48vh;
   }
 }
