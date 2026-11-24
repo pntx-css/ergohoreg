@@ -119,8 +119,7 @@ AFRAME.registerComponent('ergonomics-evaluator', {
         .filter(item => item.role.type === 'speaker')
         .map(item => ({id: item.entity.id, role: 'speaker', transform: item.entity, collider: item.collider}));
     const audio = gameplay.audioState;
-    let penalty = (audio.tvOn ? audio.tvVolume * 0.25 : 0) +
-      audio.speakerLeftVolume * 0.2 +
+    let penalty = audio.speakerLeftVolume * 0.2 +
       audio.speakerRightVolume * 0.2 +
       (audio.acOn ? audio.acMode === 'turbo' ? 25 : 5 : 0) +
       (audio.phoneOn ? 17 : 0);

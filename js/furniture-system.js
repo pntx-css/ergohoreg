@@ -84,12 +84,6 @@ function collisionPairKey(left, right) {
   return [leftId, rightId].sort().join('|');
 }
 
-function horizontalOverlapArea(left, right) {
-  const width = Math.max(0, Math.min(left.maxX, right.maxX) - Math.max(left.minX, right.minX));
-  const depth = Math.max(0, Math.min(left.maxZ, right.maxZ) - Math.max(left.minZ, right.minZ));
-  return width * depth;
-}
-
 AFRAME.registerComponent('furniture-editor', {
   init() {
     this.scene = this.el;
@@ -108,6 +102,7 @@ AFRAME.registerComponent('furniture-editor', {
     this.lastHint = '';
     this.lastButtonLabel = '';
     this.lastGrabMoveKey = '';
+    this.lastFloorRayHit = false;
     this.crosshair = document.getElementById('crosshair');
     this.debugPanel = document.getElementById('collision-debug-panel');
     this.debugMode = new URLSearchParams(location.search).get('collisionDebug') === '1' ||
@@ -117,6 +112,8 @@ AFRAME.registerComponent('furniture-editor', {
     this.speakerModelFailed = false;
     this.raycaster = new THREE.Raycaster();
     this.floorRaycaster = new THREE.Raycaster();
+    this.floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -FURNITURE_FLOOR_Y);
+    this.floorHitPoint = new THREE.Vector3();
     this.floorObject = document.getElementById('ground');
     this.fPopup = document.getElementById('f-interaction-popup');
     this.fPopupContent = document.getElementById('f-interaction-content');
@@ -233,10 +230,12 @@ AFRAME.registerComponent('furniture-editor', {
     if (!this.ready) this.ready = true;
 
     this.registerAutoSofaItems();
-    this.updateFurnitureColliders();
     this.updateVRButtons();
     if (this.grabbedItem) this.updateGrabbedItem();
-    else this.updateNearbyItem();
+    else {
+      this.updateFurnitureColliders();
+      this.updateNearbyItem();
+    }
     this.updateInteractionUI();
     this.scene.components['ergonomics-evaluator']?.updateScores(this.items, this.shell);
   },
@@ -896,9 +895,13 @@ AFRAME.registerComponent('furniture-editor', {
 
   updateGrabbedItem() {
     const item = this.grabbedItem;
+    if (!item?.transform?.object3D || !item.collider) return;
     this.scene.object3D.updateMatrixWorld(true);
     this.camera.object3D.getWorldPosition(this.cameraPosition);
     this.camera.object3D.getWorldDirection(this.direction);
+    // The A-Frame camera entity exposes a generic Object3D whose +Z axis points backward.
+    // Match fps-controls: invert it to get the camera's forward direction (-Z).
+    this.direction.negate();
     this.direction.y = 0;
     if (this.direction.lengthSq() < 0.001) this.direction.set(0, 0, -1);
     else this.direction.normalize();
@@ -921,8 +924,11 @@ AFRAME.registerComponent('furniture-editor', {
 
     const candidate = {...item.collider, ...this.colliderAtPose(item, candidatePose)};
     const currentPose = this.getItemWorldPose(item);
-    item.valid = floorHeight !== null && this.isValidPlacement(item, candidate) &&
-      this.isPlacementPathValid(item, currentPose, candidatePose);
+    const localPositionBefore = item.transform.object3D.position.clone();
+    const canRelocateFreely = this.isMovable(item);
+    const placementRejection = this.getPlacementRejection(item, candidate);
+    const pathValid = canRelocateFreely || this.isPlacementPathValid(item, currentPose, candidatePose);
+    item.valid = floorHeight !== null && !placementRejection && pathValid;
     if (item.valid) {
       this.setItemWorldPose(item, candidatePose.position, candidatePose.yaw);
       this.updateFurnitureColliders();
@@ -934,26 +940,63 @@ AFRAME.registerComponent('furniture-editor', {
     this.updatePlacementDebug(item, candidate, item.valid);
 
     const position = candidatePose.position;
-    const moveKey = `${item.id}|${item.valid}|${position.x.toFixed(2)}|${position.y.toFixed(2)}|${position.z.toFixed(2)}|${candidatePose.yaw.toFixed(3)}`;
+    const actualPosition = this.getItemWorldPose(item).position;
+    const localPositionAfter = item.transform.object3D.position.clone();
+    const requestedDelta = currentPose.position.distanceTo(position);
+    const appliedDelta = currentPose.position.distanceTo(actualPosition);
+    const rejectionReason = floorHeight === null
+      ? 'floor ray did not reach a valid room position'
+      : placementRejection?.reason === 'collision'
+        ? `collision with ${placementRejection.blockerKind === 'wall' ? 'wall' : placementRejection.blockerKind === 'furniture' ? 'furniture' : 'object'}`
+        : placementRejection?.reason === 'horizontal-room-boundary' || placementRejection?.reason === 'vertical-room-boundary'
+          ? 'outside room bounds'
+          : placementRejection?.reason || (!pathValid ? 'placement path blocked' : null);
+    const blocker = placementRejection?.blocker || null;
+    const blockerKind = placementRejection?.blockerKind || null;
+    const moveKey = `${item.id}|${item.valid}|${position.x.toFixed(2)}|${position.y.toFixed(2)}|${position.z.toFixed(2)}|${candidatePose.yaw.toFixed(3)}|${rejectionReason}|${blocker}`;
     if (moveKey !== this.lastGrabMoveKey) {
       this.lastGrabMoveKey = moveKey;
-      console.info('[LivingRoom] Grab Move', {
+      const diagnostic = {
         id: item.id,
-        position: position.toArray().map(value => Number(value.toFixed(2))),
-        valid: item.valid
-      });
+        oldWorldPosition: currentPose.position.toArray().map(value => Number(value.toFixed(3))),
+        rawTargetPosition: [targetX, candidateY, targetZ].map(value => Number(value.toFixed(3))),
+        targetWorldPosition: position.toArray().map(value => Number(value.toFixed(3))),
+        finalWorldPosition: actualPosition.toArray().map(value => Number(value.toFixed(3))),
+        object3DLocalPositionBefore: localPositionBefore.toArray().map(value => Number(value.toFixed(3))),
+        object3DLocalPositionAfter: localPositionAfter.toArray().map(value => Number(value.toFixed(3))),
+        requestedDeltaMeters: Number(requestedDelta.toFixed(3)),
+        appliedDeltaMeters: Number(appliedDelta.toFixed(3)),
+        floorRayHit: this.lastFloorRayHit,
+        floorHeight,
+        rejectionReason,
+        blocker,
+        blockerKind
+      };
+      if (!item.valid) {
+        console.warn(`[Furniture Move Debug] Move rejected: ${rejectionReason}`, diagnostic);
+      } else if (appliedDelta > 0.005) {
+        console.info('[Furniture Move Debug] Move successful: old position → new position', diagnostic);
+      } else if (requestedDelta > 0.005) {
+        console.error('[Furniture Move Debug] Move rejected: object3D transform did not apply target position', diagnostic);
+      } else {
+        console.info('[Furniture Move Debug] No visible movement: target unchanged after grid snapping', diagnostic);
+      }
     }
   },
 
   getFloorHeight(x, z) {
-    if (!this.floorObject?.object3D) return null;
-    this.scene.object3D.updateMatrixWorld(true);
+    const bounds = ROOM_LAYOUT.inside;
+    if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) {
+      this.lastFloorRayHit = false;
+      return null;
+    }
     this.floorRaycaster.set(
       new THREE.Vector3(x, ROOM_LAYOUT.ceilingY + 1, z),
       new THREE.Vector3(0, -1, 0)
     );
-    const hit = this.floorRaycaster.intersectObject(this.floorObject.object3D, true)[0];
-    return hit ? Math.max(FURNITURE_FLOOR_Y, hit.point.y) : null;
+    const hit = this.floorRaycaster.ray.intersectPlane(this.floorPlane, this.floorHitPoint);
+    this.lastFloorRayHit = !!hit;
+    return hit ? Math.max(FURNITURE_FLOOR_Y, hit.y) : null;
   },
 
   updateFloorMarker(position, floorHeight, valid) {
@@ -1023,27 +1066,44 @@ AFRAME.registerComponent('furniture-editor', {
     return true;
   },
 
-  isValidPlacement(item, candidate) {
+  getPlacementRejection(item, candidate) {
     const bounds = ROOM_LAYOUT.inside;
     const values = [candidate.minX, candidate.maxX, candidate.minY, candidate.maxY, candidate.minZ, candidate.maxZ];
-    if (!values.every(Number.isFinite)) return false;
-    if (candidate.minY < FURNITURE_FLOOR_Y - 0.001 || candidate.maxY > ROOM_LAYOUT.ceilingY - 0.02) return false;
+    if (!values.every(Number.isFinite)) return {reason: 'invalid-bounds', blocker: null, blockerKind: null};
+    if (candidate.minY < FURNITURE_FLOOR_Y - 0.001 || candidate.maxY > ROOM_LAYOUT.ceilingY - 0.02) {
+      return {reason: 'vertical-room-boundary', blocker: 'room', blockerKind: 'room'};
+    }
     if (candidate.minX < bounds.minX + 0.02 || candidate.maxX > bounds.maxX - 0.02 ||
-        candidate.minZ < bounds.minZ + 0.02 || candidate.maxZ > bounds.maxZ - 0.02) return false;
+        candidate.minZ < bounds.minZ + 0.02 || candidate.maxZ > bounds.maxZ - 0.02) {
+      return {reason: 'horizontal-room-boundary', blocker: 'room', blockerKind: 'room'};
+    }
 
-    return !this.shell.colliders.some(other => {
-      if (other === candidate || other.itemId === item.id || other.maxY <= candidate.minY || other.minY >= candidate.maxY) return false;
-      if (item.role === 'tv' && other.groupId === item.groupId) return false;
+    for (const other of this.shell.colliders) {
+      if (other === candidate || other.itemId === item.id || other.maxY <= candidate.minY || other.minY >= candidate.maxY) continue;
+      if (item.role === 'tv' && other.groupId === item.groupId) continue;
       if (item.role === 'speaker' && other.role === 'tv' && other.groupId === item.groupId) {
         const tabletopY = other.item?.speakerSurfaceY;
         const restingOnTable = Number.isFinite(tabletopY) &&
           Math.abs(candidate.minY - tabletopY) <= 0.025 &&
           candidate.minX >= other.minX && candidate.maxX <= other.maxX &&
           candidate.minZ >= other.minZ && candidate.maxZ <= other.maxZ;
-        return !restingOnTable;
+        if (!restingOnTable) return {
+          reason: 'collision',
+          blocker: other.item?.label || other.name || other.itemId || 'tv',
+          blockerKind: other.kind || 'furniture'
+        };
+        continue;
       }
-      const overlap = horizontalOverlapArea(candidate, other);
-      if (overlap <= 0) return false;
+      const overlapX = Math.max(0, Math.min(candidate.maxX, other.maxX) - Math.max(candidate.minX, other.minX));
+      const overlapZ = Math.max(0, Math.min(candidate.maxZ, other.maxZ) - Math.max(candidate.minZ, other.minZ));
+      if (overlapX <= 0 || overlapZ <= 0) continue;
+      if (this.isMovable(item)) {
+        // The moving item's collider is padded by FURNITURE_CLEARANCE. Other
+        // furniture colliders receive the same padding, so ignore only the
+        // overlap caused by those safety margins, not a real model collision.
+        const margin = FURNITURE_CLEARANCE * (other.kind === 'furniture' ? 2 : 1);
+        if (overlapX <= margin + 0.001 || overlapZ <= margin + 0.001) continue;
+      }
       if (other.kind === 'furniture') {
         const initial = this.initialOverlapAllowances.get(collisionPairKey(candidate, other));
         if (initial) {
@@ -1054,11 +1114,20 @@ AFRAME.registerComponent('furniture-editor', {
             Math.min(candidate.maxY, other.maxY) <= initial.maxY + 0.002 &&
             Math.max(candidate.minZ, other.minZ) >= initial.minZ - 0.002 &&
             Math.min(candidate.maxZ, other.maxZ) <= initial.maxZ + 0.002;
-          if (withinInitialOverlap) return false;
+          if (withinInitialOverlap) continue;
         }
       }
-      return true;
-    });
+      return {
+        reason: 'collision',
+        blocker: other.item?.label || other.name || other.itemId || other.kind || 'unknown',
+        blockerKind: other.kind || 'object'
+      };
+    }
+    return null;
+  },
+
+  isValidPlacement(item, candidate) {
+    return !this.getPlacementRejection(item, candidate);
   },
 
   updatePreview(box, valid) {
@@ -1119,17 +1188,31 @@ AFRAME.registerComponent('furniture-editor', {
       this.scene.components['ergonomics-evaluator']?.updateScores(this.items, this.shell);
       this.updateNearbyItem();
       this.updateInteractionUI();
+      console.info('[Furniture Move Debug] Move Mode inactive', {
+        id: item.id,
+        positionBefore: item.moveModeStartPosition?.toArray().map(value => Number(value.toFixed(2))) || null,
+        positionAfter: pose.position.toArray().map(value => Number(value.toFixed(2)))
+      });
+      item.moveModeStartPosition = null;
       return;
     }
     if (!this.nearbyItem) return;
     this.grabbedItem = this.nearbyItem;
     this.nearbyItem = null;
     this.grabbedItem.lastValidTransform = this.captureItemTransform(this.grabbedItem);
+    this.grabbedItem.moveModeStartPosition = this.grabbedItem.lastValidTransform.position.clone();
     this.grabbedItem.valid = true;
     this.setAppearance(this.grabbedItem, 'highlight');
-    console.info('[LivingRoom] Grab Start', {id: this.grabbedItem.id, item: this.grabbedItem.label});
+    console.info('[Furniture Move Debug] Move Mode active', {
+      id: this.grabbedItem.id,
+      positionBefore: this.grabbedItem.moveModeStartPosition.toArray().map(value => Number(value.toFixed(2)))
+    });
     this.updateGrabbedItem();
     this.updateInteractionUI();
+  },
+
+  isMovable(item) {
+    return item?.role === 'sofa' || item?.id === 'MEJA';
   },
 
   rotateGrabbed(degrees) {

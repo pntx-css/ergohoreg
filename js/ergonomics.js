@@ -27,9 +27,9 @@ AFRAME.registerComponent('ergonomics-evaluator', {
       viewingDistance: 40,
       noiseControl: 30,
       lighting: 20,
-      comfort: 100
+      comfort: 40
     };
-    this.finalScore = 48;
+    this.finalScore = 33;
     this.category = 'Perlu Perbaikan';
     this.interactionHint = '';
     this.panel = document.getElementById('ergonomics-panel');
@@ -115,7 +115,7 @@ AFRAME.registerComponent('ergonomics-evaluator', {
     const speakers = loader?.placedModels.filter(item => item.role.type === 'speaker') || [];
     if (!sofa || !speakers.length) return 30;
     const sofaCenter = itemCenter(sofa);
-    let penalty = gameplay.audioState.tvOn ? gameplay.audioState.tvVolume * 0.35 : 0;
+    let penalty = 0;
     for (const speaker of speakers) {
       const isLeft = speaker.side !== 'right';
       const powered = gameplay.audioState[isLeft ? 'speakerLeftOn' : 'speakerRightOn'];
@@ -145,6 +145,12 @@ AFRAME.registerComponent('ergonomics-evaluator', {
 
   renderScores() {
     if (this.panel) {
+      const gameplay = this.el.components['ergonomics-gameplay'];
+      const comfortStatus = this.panel.querySelector('[data-comfort-status]');
+      if (comfortStatus) {
+        const playerStatus = gameplay?.getPlayerComfortStatus?.() ?? 'Nyaman';
+        comfortStatus.textContent = `Kondisi: ${playerStatus}`;
+      }
       for (const [key] of ERGONOMY_METRICS) {
         const value = this.panel.querySelector(`[data-value="${key}"]`);
         const bar = this.panel.querySelector(`[data-bar="${key}"]`);

@@ -7,17 +7,17 @@ AFRAME.registerComponent('ergonomics-gameplay', {
   init() {
     this.audioState = {
       tvOn: false,
-      tvVolume: 0,
       speakerLeftOn: true,
       speakerLeftVolume: 70,
       speakerRightOn: true,
       speakerRightVolume: 70,
       acOn: true,
       acMode: 'turbo',
-      acTemperature: 24,
+      acTemperature: 16,
       acError: true,
       phoneOn: true
     };
+    this.audioState.acTemperature ??= 16;
     this.lightOn = false;
     this.brightness = 25;
     this.acInspected = false;
@@ -29,6 +29,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.appliedTV = null;
     this.lastTargetCheck = 0;
     this.rotationBlockedUntil = 0;
+    this.lastSpeakerMissionDebugKey = '';
     this.panelHadPointerLock = false;
     this.panelPreviousFocus = null;
     this.scoringReady = false;
@@ -101,7 +102,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         event.stopImmediatePropagation();
         const step = event.code === 'ArrowLeft' || event.code === 'ArrowDown' ? -1 : 1;
         if (target?.kind === 'lamp') this.stepBrightness(step);
-        else if (target?.kind === 'tv' || target?.kind === 'speaker') this.adjustVolume(step * 5);
+        else if (target?.kind === 'speaker') this.adjustVolume(step * 5);
         else if (target?.kind === 'ac') this.stepACMode(step);
       }
     };
@@ -166,7 +167,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       if (input.dataset.temperatureKey === 'acTemperature') {
         this.setACTemperature(value);
         const output = input.parentElement.querySelector('output');
-        if (output) output.value = `${this.audioState.acTemperature}°C`;
+        if (output) output.value = `${this.getACTemperature()}°C`;
         return;
       }
       if (!input.dataset.volumeKey) return;
@@ -206,11 +207,11 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     if (!this.panel || this.panel.hidden) this.activeTarget = target;
     this.crosshair?.classList.toggle('is-target', !!target);
     this.hint.textContent = this.rotationBlockedUntil > performance.now()
-      ? this.activeTarget?.kind === 'sofa'
-        ? 'Sofa tidak dapat diputar karena ruang putarnya terhalang.'
+      ? this.activeTarget?.kind === 'sofa' || this.activeTarget?.kind === 'coffee-table'
+        ? 'Furniture tidak dapat diputar karena ruang putarnya terhalang.'
         : 'Rotasi dihentikan agar speaker tidak menembus furnitur.'
       : this.moveItem
-        ? 'Tekan F untuk menyelesaikan penataan'
+        ? 'WASD untuk menggeser · F untuk menyelesaikan penataan'
         : target
           ? `Tekan F untuk berinteraksi · ${target.label}`
           : '';
@@ -279,16 +280,44 @@ AFRAME.registerComponent('ergonomics-gameplay', {
   },
 
   getComfortScore() {
-    const temperature = this.audioState.acTemperature;
-    if (temperature >= 22 && temperature <= 25) return 100;
-    if ((temperature >= 20 && temperature <= 21) ||
-        (temperature >= 26 && temperature <= 28)) return 75;
+    const temperatureStatus = this.getTemperatureStatus();
+    if (temperatureStatus === 'Nyaman') return 100;
+    if (temperatureStatus === 'Agak Dingin' || temperatureStatus === 'Agak Panas') return 75;
     return 40;
   },
 
+  getACTemperature() {
+    const temperature = this.audioState?.acTemperature;
+    return Number.isFinite(temperature) ? temperature : 24;
+  },
+
+  getTemperatureStatus() {
+    const temperature = this.getACTemperature();
+    if (temperature <= 19) return 'Kedinginan';
+    if (temperature <= 21) return 'Agak Dingin';
+    if (temperature <= 25) return 'Nyaman';
+    if (temperature <= 28) return 'Agak Panas';
+    return 'Kepanasan';
+  },
+
+  getPlayerComfortStatus() {
+    const temperature = this.getACTemperature();
+    if (temperature <= 21) return 'Kedinginan';
+    if (temperature <= 25) return 'Nyaman';
+    return 'Kepanasan';
+  },
+
+  updateACTemperatureStatus() {
+    const temperatureStatus = this.controls?.querySelector('[data-ac-temperature-status]');
+    if (temperatureStatus) temperatureStatus.textContent = `Status suhu: ${this.getTemperatureStatus()}`;
+    const playerStatus = this.controls?.querySelector('[data-player-comfort-status]');
+    if (playerStatus) playerStatus.textContent = `Kondisi pemain: ${this.getPlayerComfortStatus()}`;
+  },
+
   setACTemperature(value) {
-    if (!Number.isFinite(value)) return;
+    if (!Number.isFinite(value) || !this.audioState) return;
     this.audioState.acTemperature = Math.max(16, Math.min(30, Math.round(value)));
+    this.updateACTemperatureStatus();
     this.refreshScores();
   },
 
@@ -320,14 +349,14 @@ AFRAME.registerComponent('ergonomics-gameplay', {
 
     for (const item of editor.items) {
       let kind = null;
-      if (item.id === 'MEJA') kind = 'phone-table';
+      if (item.id === 'MEJA') kind = 'coffee-table';
       else if (item.role === 'sofa') kind = 'sofa';
       else if (item.role === 'speaker') kind = 'speaker';
       else if (item.role === 'tv') kind = 'tv';
       else if (item.role === 'lamp') kind = 'lamp';
       if (!kind || !item.collider) continue;
       consider(
-        {kind, label: kind === 'phone-table' ? 'Meja Telepon' : item.label, item},
+        {kind, label: kind === 'coffee-table' ? 'Meja Depan TV' : item.label, item},
         new THREE.Box3(
           new THREE.Vector3(item.collider.minX, item.collider.minY, item.collider.minZ),
           new THREE.Vector3(item.collider.maxX, item.collider.maxY, item.collider.maxZ)
@@ -418,15 +447,8 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     }
     if (target.kind === 'speaker') this.inspectedSpeakers.add(this.getSpeakerSide(target.item));
     if (target.kind === 'phone') this.phoneInspected = true;
-    if (target.kind === 'sofa' || target.kind === 'phone-table') {
+    if (target.kind === 'sofa' || target.kind === 'coffee-table') {
       if (!target.item || !editor) return;
-      if (target.kind === 'sofa' && this.missionIndex === 5) {
-        this.openPanel(target);
-        return;
-      }
-      editor.nearbyItem = target.item;
-      editor.toggleGrab();
-      this.moveItem = target.item;
       this.openPanel(target);
       return;
     }
@@ -504,14 +526,11 @@ AFRAME.registerComponent('ergonomics-gameplay', {
 
   adjustVolume(delta) {
     const target = this.activeTarget;
+    if (target?.kind !== 'speaker') return;
     const isLeftSpeaker = target?.item?.side === 'left' ||
       target?.item?.id === 'speaker-left' ||
       target?.item?.id?.includes('kiri');
-    const key = target?.kind === 'tv'
-      ? 'tvVolume'
-      : isLeftSpeaker
-        ? 'speakerLeftVolume'
-        : 'speakerRightVolume';
+    const key = isLeftSpeaker ? 'speakerLeftVolume' : 'speakerRightVolume';
     this.setVolume(key, this.audioState[key] + delta);
     const input = this.controls?.querySelector(`[data-volume-key="${key}"]`);
     if (input) {
@@ -727,23 +746,32 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         break;
       case 'furniture-move':
         if (!target?.item || !editor) return;
+        console.info('[Furniture Move Debug] Move Mode button selected', {
+          id: target.item.id,
+          alreadyMoving: !!editor.grabbedItem
+        });
         if (editor.grabbedItem) editor.toggleGrab();
         else {
           editor.nearbyItem = target.item;
           editor.toggleGrab();
         }
         this.moveItem = editor.grabbedItem ? target.item : null;
+        if (editor.grabbedItem === target.item) {
+          this.applyAction('close');
+          if (document.body.dataset.mode === 'desktop') {
+            document.getElementById('player-rig')
+              ?.components['fps-controls']?.desktopController?.requestPointerLock();
+          }
+          return;
+        }
         break;
       case 'furniture-rotate-left':
-        if (target?.kind === 'sofa' && this.missionIndex === 5) this.rotateSofaInPlace(target.item, -15);
+        if (target?.kind === 'sofa' || target?.kind === 'coffee-table') this.rotateFurnitureInPlace(target.item, -15);
         else editor?.rotateGrabbed(-15);
         break;
       case 'furniture-rotate-right':
-        if (target?.kind === 'sofa' && this.missionIndex === 5) this.rotateSofaInPlace(target.item, 15);
+        if (target?.kind === 'sofa' || target?.kind === 'coffee-table') this.rotateFurnitureInPlace(target.item, 15);
         else editor?.rotateGrabbed(15);
-        break;
-      case 'sofa-flip':
-        this.rotateSofaInPlace(target?.item, 180);
         break;
     }
     this.applyLighting();
@@ -751,11 +779,13 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.refreshScores();
   },
 
-  rotateSofaInPlace(item, degrees) {
+  rotateFurnitureInPlace(item, degrees) {
     const editor = this.el.components['furniture-editor'];
-    if (item?.role !== 'sofa' || !editor || editor.grabbedItem) return false;
+    if (!['sofa', 'table'].includes(item?.role) || !editor ||
+        (editor.grabbedItem && editor.grabbedItem !== item)) return false;
     const transform = item.transform.object3D;
     const previousRotationY = item.rotationY;
+    const previousPose = editor.getItemWorldPose(item);
     if (!item.rotationPivotGroup) {
       const pivot = this.getEntityLocalBoundsCenter(item.entity);
       const root = item.entity.getObject3D('mesh');
@@ -770,13 +800,16 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       item.rotationPivotGroup.attach(root);
     }
 
+    const previousPivotRotation = item.rotationPivotGroup.rotation.y;
     item.rotationPivotGroup.rotation.y += THREE.MathUtils.degToRad(degrees);
     transform.updateWorldMatrix(true, true);
     item.rotationY += THREE.MathUtils.degToRad(degrees);
     editor.updateFurnitureColliders();
+    const nextPose = editor.getItemWorldPose(item);
 
-    if (!editor.isValidPlacement(item, item.collider)) {
-      item.rotationPivotGroup.rotation.y -= THREE.MathUtils.degToRad(degrees);
+    if (!editor.isPlacementPathValid(item, previousPose, nextPose) ||
+        !editor.isValidPlacement(item, item.collider)) {
+      item.rotationPivotGroup.rotation.y = previousPivotRotation;
       item.rotationY = previousRotationY;
       transform.updateWorldMatrix(true, true);
       editor.updateFurnitureColliders();
@@ -786,6 +819,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
 
     this.rotationBlockedUntil = 0;
     this.el.object3D.updateMatrixWorld(true);
+    if (editor.grabbedItem === item) item.lastValidTransform = editor.captureItemTransform(item);
     this.refreshScores();
     return true;
   },
@@ -846,10 +880,6 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       : [];
     const leftSpeaker = speakers.find(item => this.getSpeakerSide(item) === 'left');
     const rightSpeaker = speakers.find(item => this.getSpeakerSide(item) === 'right');
-    const speakersEqual = this.audioState.speakerLeftVolume === this.audioState.speakerRightVolume;
-    const speakerVolumesCalibrated = speakersEqual &&
-      this.audioState.speakerLeftVolume <= 60 &&
-      this.audioState.speakerRightVolume <= 60;
     switch (this.missionIndex) {
       case 0:
         return [
@@ -863,29 +893,48 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       case 2:
         return [
           {label: 'Arahkan crosshair ke AC dan tekan F untuk memeriksa pengaturannya.', done: this.acInspected},
-          {label: 'Pilih Silent Mode pada panel AC untuk mengurangi kebisingan.', done: this.audioState.acOn && this.audioState.acMode === 'silent'}
+          {label: 'Pilih Silent Mode pada panel AC untuk mengurangi kebisingan.', done: this.audioState.acOn && this.audioState.acMode === 'silent'},
+          {label: 'Atur suhu AC ke rentang nyaman 22°C–25°C.', done: this.getACTemperature() >= 22 && this.getACTemperature() <= 25}
         ];
       case 3:
-        return [
-          {label: 'Periksa speaker kiri dengan mengarahkannya lalu menekan F.', done: this.inspectedSpeakers.has('left')},
-          {label: 'Periksa speaker kanan dengan mengarahkannya lalu menekan F.', done: this.inspectedSpeakers.has('right')},
-          {
-            label: 'Samakan volume speaker kiri dan kanan, maksimal 60% untuk masing-masing.',
-            done: speakerVolumesCalibrated
-          },
-          {
-            label: 'Putar speaker kiri ke arah area sofa dengan tombol Putar atau Q/R.',
-            done: this.isSpeakerFacingSofa(leftSpeaker, sofa)
-          },
-          {
-            label: 'Putar speaker kanan ke arah area sofa dengan tombol Putar atau Q/R.',
-            done: this.isSpeakerFacingSofa(rightSpeaker, sofa)
-          }
-        ];
+        {
+          const leftVolume = this.audioState?.speakerLeftVolume;
+          const rightVolume = this.audioState?.speakerRightVolume;
+          const volumesEqual = Number.isFinite(leftVolume) && Number.isFinite(rightVolume) && leftVolume === rightVolume;
+          const volumesWithinLimit = Number.isFinite(leftVolume) && Number.isFinite(rightVolume) &&
+            leftVolume >= 0 && rightVolume >= 0 && leftVolume <= 60 && rightVolume <= 60;
+          const volumesValid = this.areSpeakerVolumesValid();
+          const leftFacing = this.isSpeakerFacingSofa(leftSpeaker, sofa);
+          const rightFacing = this.isSpeakerFacingSofa(rightSpeaker, sofa);
+          const missionComplete = volumesValid && leftFacing && rightFacing;
+          this.logSpeakerMissionDebug({
+            leftVolume,
+            rightVolume,
+            volumesEqual,
+            volumesWithinLimit,
+            leftFacing,
+            rightFacing,
+            missionComplete
+          });
+          return [
+            {
+              label: 'Samakan volume speaker kiri dan kanan, maksimal 60% untuk masing-masing.',
+              done: volumesValid
+            },
+            {
+              label: 'Putar speaker kiri ke arah area sofa dengan tombol Putar atau Q/R.',
+              done: leftFacing
+            },
+            {
+              label: 'Putar speaker kanan ke arah area sofa dengan tombol Putar atau Q/R.',
+              done: rightFacing
+            }
+          ];
+        }
       case 4:
         return [
-          {label: 'Periksa telepon dan matikan jika masih aktif.', done: this.phoneInspected && !this.audioState.phoneOn},
-          {label: 'Pastikan TV mati; turunkan volume speaker kiri dan kanan bila perlu.', done: !this.audioState.tvOn},
+          {label: 'Nyalakan TV sebagai media tampilan visual.', done: this.audioState.tvOn},
+          {label: 'Matikan telepon jika masih aktif.', done: !this.audioState.phoneOn},
           {label: 'Tingkatkan Noise Control Score hingga minimal 75.', done: scores.noiseControl >= 75}
         ];
       case 5:
@@ -901,6 +950,28 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     }
   },
 
+  areSpeakerVolumesValid() {
+    const left = this.audioState?.speakerLeftVolume;
+    const right = this.audioState?.speakerRightVolume;
+    return Number.isFinite(left) && Number.isFinite(right) &&
+      left >= 0 && right >= 0 && left <= 60 && right <= 60 && left === right;
+  },
+
+  logSpeakerMissionDebug(state) {
+    const key = JSON.stringify(state);
+    if (key === this.lastSpeakerMissionDebugKey) return;
+    this.lastSpeakerMissionDebugKey = key;
+    console.info('[Speaker Mission Debug]', {
+      speakerLeftVolume: state.leftVolume ?? null,
+      speakerRightVolume: state.rightVolume ?? null,
+      volumesEqual: state.volumesEqual,
+      volumesWithinLimit: state.volumesWithinLimit,
+      speakerLeftFacingSofa: state.leftFacing,
+      speakerRightFacingSofa: state.rightFacing,
+      missionComplete: state.missionComplete
+    });
+  },
+
   getMissionContent() {
     return [
       {
@@ -913,7 +984,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       },
       {
         title: 'Kurangi Kebisingan AC',
-        description: 'AC masih berjalan pada Mode Turbo sehingga menghasilkan suara yang mengganggu. Periksa AC dan ubah ke Silent Mode agar tingkat kebisingan ruangan berkurang.'
+        description: 'AC masih berada pada Mode Turbo dan suhu 16°C sehingga ruangan terasa dingin. Periksa AC, pilih Silent Mode, lalu atur suhu ke 22°C–25°C agar ruangan nyaman dan tenang.'
       },
       {
         title: 'Kalibrasi Sistem Audio',
@@ -921,7 +992,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       },
       {
         title: 'Kurangi Gangguan Kebisingan',
-        description: 'Periksa telepon, TV, dan volume speaker. Matikan perangkat yang tidak diperlukan atau turunkan volumenya hingga Noise Control Score minimal 75.'
+        description: 'Nyalakan TV untuk menggunakan tampilan hiburan, matikan telepon agar tidak mengganggu, lalu sesuaikan speaker dan perangkat lain hingga Noise Control Score minimal 75. TV hanya menampilkan visual dan tidak menambah kebisingan.'
       },
       {
         title: 'Perbaiki Posisi Sofa',
@@ -1050,7 +1121,6 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         this.audioState.tvOn,
         true
       ));
-      this.addVolumeControl('Volume TV', 'tvVolume', this.audioState.tvVolume);
     } else if (kind === 'speaker') {
       const isLeft = this.getSpeakerSide(item) === 'left';
       const key = isLeft ? 'speakerLeftVolume' : 'speakerRightVolume';
@@ -1086,34 +1156,43 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       temperatureInput.min = '16';
       temperatureInput.max = '30';
       temperatureInput.step = '1';
-      temperatureInput.value = String(this.audioState.acTemperature);
+      temperatureInput.value = String(this.getACTemperature());
       temperatureInput.dataset.temperatureKey = 'acTemperature';
       temperatureInput.setAttribute('aria-label', 'Suhu AC');
       const temperatureOutput = document.createElement('output');
-      temperatureOutput.value = `${this.audioState.acTemperature}°C`;
+      temperatureOutput.value = `${this.getACTemperature()}°C`;
       temperatureRow.append(temperatureLabel, temperatureInput, temperatureOutput);
-      this.controls.appendChild(temperatureRow);
+      const temperatureStatus = document.createElement('p');
+      temperatureStatus.className = 'interaction-control__label';
+      temperatureStatus.dataset.acTemperatureStatus = '';
+      const playerStatus = document.createElement('p');
+      playerStatus.className = 'interaction-control__label';
+      playerStatus.dataset.playerComfortStatus = '';
+      this.controls.append(temperatureRow, temperatureStatus, playerStatus);
+      this.updateACTemperatureStatus();
     } else if (kind === 'phone') {
       this.controls.append(
         this.makeButton('ON', 'phone-on', this.audioState.phoneOn, true),
         this.makeButton('OFF', 'phone-off', !this.audioState.phoneOn, true)
       );
-    } else if (kind === 'sofa' || kind === 'phone-table') {
+    } else if (kind === 'sofa' || kind === 'coffee-table') {
       const editor = this.el.components['furniture-editor'];
       const isMoving = editor?.grabbedItem === item;
       if (kind === 'sofa' && this.missionIndex === 5) {
         const title = document.createElement('p');
         title.className = 'interaction-control__label';
-        title.textContent = 'Putar sofa tanpa mengubah posisinya.';
+        title.textContent = 'Pindahkan sofa dan sesuaikan arah hadapnya. Rotasi tidak menggeser posisi.';
         this.controls.append(
           title,
-          this.makeButton('Putar 180° menghadap TV', 'sofa-flip')
+          this.makeButton(isMoving ? 'Selesai Move Mode' : 'Move Mode', 'furniture-move', isMoving, true),
+          this.makeButton('Rotate Left (-15°)', 'furniture-rotate-left'),
+          this.makeButton('Rotate Right (+15°)', 'furniture-rotate-right')
         );
       } else {
         this.controls.append(
           this.makeButton(isMoving ? 'Selesai Move Mode' : 'Move Mode', 'furniture-move', isMoving, true),
-          this.makeButton('Rotate Left · 15°', 'furniture-rotate-left'),
-          this.makeButton('Rotate Right · 15°', 'furniture-rotate-right')
+          this.makeButton('Rotate Left (-15°)', 'furniture-rotate-left'),
+          this.makeButton('Rotate Right (+15°)', 'furniture-rotate-right')
         );
       }
     }
