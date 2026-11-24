@@ -1,3 +1,6 @@
+import telephoneAudioUrl from '../../assets/telephone.mp3?url';
+import acAudioUrl from '../../assets/ac.mp3?url';
+
 const LIGHTING_SCORES = {25: 35, 50: 75, 75: 100, 100: 40};
 const LIGHT_LEVELS = {25: 0.34, 50: 0.67, 75: 1, 100: 1.34};
 const MISSION_COUNT = 6;
@@ -18,6 +21,59 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       phoneOn: true
     };
     this.audioState.acTemperature ??= 16;
+    this.phoneAudio = new Audio(telephoneAudioUrl);
+    this.phoneAudio.loop = true;
+    this.phoneAudioStarting = false;
+    this.onPhoneUserGesture = () => this.syncPhoneAudio();
+    document.addEventListener('pointerdown', this.onPhoneUserGesture, true);
+    document.addEventListener('keydown', this.onPhoneUserGesture, true);
+    this.syncPhoneAudio();
+    this.acAudio = new Audio(acAudioUrl);
+    this.acAudio.loop = true;
+    this.acAudioContext = new AudioContext();
+    this.acAudioGain = this.acAudioContext.createGain();
+    this.acAudioGain.gain.value = 7;
+    this.acAudioContext.createMediaElementSource(this.acAudio).connect(this.acAudioGain);
+    this.acAudioGain.connect(this.acAudioContext.destination);
+    this.acAudioStarting = false;
+    this.gameplayStarted = false;
+    this.gameplayStartPending = false;
+    this.onACUserGesture = () => this.syncACAudio();
+    document.addEventListener('pointerdown', this.onACUserGesture, true);
+    document.addEventListener('keydown', this.onACUserGesture, true);
+    this.onGameplayStarted = () => {
+      if (this.gameplayStarted || this.gameplayStartPending) return;
+      this.gameplayStartPending = true;
+      const menu = document.getElementById('start-menu');
+      const startGameplayAudio = () => {
+        if (
+          this.gameplayStarted ||
+          document.body.classList.contains('is-start-menu-open') ||
+          (menu && getComputedStyle(menu).visibility !== 'hidden')
+        ) return;
+        this.gameplayStartPending = false;
+        this.gameplayStarted = true;
+        this.syncPhoneAudio();
+        this.syncACAudio();
+      };
+      if (!menu) {
+        startGameplayAudio();
+        return;
+      }
+
+      const onMenuTransitionEnd = event => {
+        if (event.target !== menu || event.propertyName !== 'opacity') return;
+        menu.removeEventListener('transitionend', onMenuTransitionEnd);
+        window.clearTimeout(transitionFallback);
+        startGameplayAudio();
+      };
+      menu.addEventListener('transitionend', onMenuTransitionEnd);
+      const transitionFallback = window.setTimeout(() => {
+        menu.removeEventListener('transitionend', onMenuTransitionEnd);
+        startGameplayAudio();
+      }, 400);
+    };
+    this.el.addEventListener('gameplay-started', this.onGameplayStarted);
     this.lightOn = false;
     this.brightness = 25;
     this.acInspected = false;
@@ -78,6 +134,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         else if (panelOpen && target?.kind === 'ac' && this.acInspected) {
           this.audioState.acOn = !this.audioState.acOn;
           this.audioState.acError = false;
+          this.syncACAudio();
           this.renderPanel();
           this.refreshScores();
         } else this.interact();
@@ -460,6 +517,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       this.updateTVAppearance();
     } else if (target.kind === 'phone') {
       this.audioState.phoneOn = !this.audioState.phoneOn;
+      this.syncPhoneAudio();
     } else if (target.kind === 'ac' && !this.acInspected) {
       this.acInspected = true;
     }
@@ -490,6 +548,81 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.lightOn = !this.lightOn;
     this.applyLighting();
     this.refreshScores();
+  },
+
+  syncPhoneAudio() {
+    if (!this.phoneAudio) return;
+    if (
+      !this.audioState.phoneOn ||
+      !this.gameplayStarted ||
+      document.body.classList.contains('is-start-menu-open')
+    ) {
+      this.phoneAudio.pause();
+      this.phoneAudio.currentTime = 0;
+      return;
+    }
+    if (this.phoneAudioStarting || !this.phoneAudio.paused) return;
+
+    this.phoneAudioStarting = true;
+    this.phoneAudio.play().then(() => {
+      if (
+        !this.audioState.phoneOn ||
+        !this.gameplayStarted ||
+        document.body.classList.contains('is-start-menu-open')
+      ) {
+        this.phoneAudio.pause();
+        this.phoneAudio.currentTime = 0;
+        return;
+      }
+      document.removeEventListener('pointerdown', this.onPhoneUserGesture, true);
+      document.removeEventListener('keydown', this.onPhoneUserGesture, true);
+    }).catch(error => {
+      if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
+        console.error('[gameplay] Telephone audio could not be played.', error);
+      }
+    }).finally(() => {
+      this.phoneAudioStarting = false;
+    });
+  },
+
+  syncACAudio() {
+    if (!this.acAudio) return;
+    if (
+      !this.gameplayStarted ||
+      document.body.classList.contains('is-start-menu-open') ||
+      !this.audioState.acOn ||
+      this.audioState.acMode !== 'turbo'
+    ) {
+      this.acAudio.pause();
+      this.acAudio.currentTime = 0;
+      return;
+    }
+    if (this.acAudioStarting || !this.acAudio.paused) return;
+
+    this.acAudioStarting = true;
+    this.acAudioContext.resume()
+      .then(() => {
+        if (
+          !this.gameplayStarted ||
+          document.body.classList.contains('is-start-menu-open') ||
+          !this.audioState.acOn ||
+          this.audioState.acMode !== 'turbo'
+        ) return;
+        return this.acAudio.play();
+      })
+      .then(() => {
+        if (this.acAudio.paused) return;
+        document.removeEventListener('pointerdown', this.onACUserGesture, true);
+        document.removeEventListener('keydown', this.onACUserGesture, true);
+      })
+      .catch(error => {
+        if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
+          console.error('[gameplay] AC audio could not be played.', error);
+        }
+      })
+      .finally(() => {
+        this.acAudioStarting = false;
+      });
   },
 
   applyLighting() {
@@ -563,6 +696,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.audioState.acOn = next !== 'off';
     if (next !== 'off') this.audioState.acMode = next;
     this.audioState.acError = false;
+    this.syncACAudio();
     this.renderPanel();
     this.refreshScores();
   },
@@ -727,22 +861,27 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       case 'ac-power':
         this.audioState.acOn = !this.audioState.acOn;
         this.audioState.acError = false;
+        this.syncACAudio();
         break;
       case 'ac-turbo':
         this.audioState.acMode = 'turbo';
         this.audioState.acOn = true;
         this.audioState.acError = false;
+        this.syncACAudio();
         break;
       case 'ac-silent':
         this.audioState.acMode = 'silent';
         this.audioState.acOn = true;
         this.audioState.acError = false;
+        this.syncACAudio();
         break;
       case 'phone-on':
         this.audioState.phoneOn = true;
+        this.syncPhoneAudio();
         break;
       case 'phone-off':
         this.audioState.phoneOn = false;
+        this.syncPhoneAudio();
         break;
       case 'furniture-move':
         if (!target?.item || !editor) return;
