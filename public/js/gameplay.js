@@ -861,20 +861,10 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     return facing.dot(toSofa) >= 0.7;
   },
 
-  isSofaTurnedAround(sofa) {
-    if (!Number.isFinite(sofa?.rotationY) || !Number.isFinite(sofa?.originalRotationY)) return false;
-    const delta = Math.atan2(
-      Math.sin(sofa.rotationY - sofa.originalRotationY),
-      Math.cos(sofa.rotationY - sofa.originalRotationY)
-    );
-    return Math.PI - Math.abs(delta) <= Math.PI / 4;
-  },
-
   getMissionObjectives() {
     const scores = this.getMissionScores();
     const editor = this.el.components['furniture-editor'];
     const sofa = editor?.items.find(item => item.role === 'sofa');
-    const missionSofa = editor?.items.find(item => item.role === 'sofa' && item.autoModel) || sofa;
     const speakers = this.missionIndex === 3
       ? this.getRuntimeModelItems().filter(item => item.role === 'speaker')
       : [];
@@ -938,13 +928,43 @@ AFRAME.registerComponent('ergonomics-gameplay', {
           {label: 'Tingkatkan Noise Control Score hingga minimal 75.', done: scores.noiseControl >= 75}
         ];
       case 5:
-        return [
-          {
-            label: 'Arahkan ke sofa, tekan F, lalu pilih Putar 180° menghadap TV. Sofa tetap di posisinya.',
-            done: !editor?.grabbedItem &&
-              this.isSofaTurnedAround(missionSofa)
-          }
-        ];
+        {
+          const loader = this.el.components['auto-furniture-loader'];
+          const viewingStatus = this.el.components['ergonomics-evaluator']
+            ?.getViewingDistanceStatus(editor?.items || [], loader);
+          const sofaFacing = !!viewingStatus?.facingTV;
+          const distanceIdeal = !!viewingStatus?.distanceIdeal;
+          const coffeeTableSuitable = !!viewingStatus?.coffeeTableSuitable;
+          const coffeeTableOnRugCenter = !!viewingStatus?.coffeeTableOnRugCenter;
+          const viewingDistanceIdeal = viewingStatus?.score === 100;
+          const furniturePlaced = !editor?.grabbedItem;
+          return [
+            {
+              label: 'Putar dan posisikan sofa agar benar-benar menghadap TV.',
+              done: sofaFacing
+            },
+            {
+              label: 'Atur jarak sofa ke TV ke rentang ideal 3,1–3,6 m.',
+              done: distanceIdeal
+            },
+            {
+              label: 'Letakkan coffee table di antara TV dan sofa, dengan jarak nyaman sekitar satu jengkal dari sofa.',
+              done: coffeeTableSuitable
+            },
+            {
+              label: 'Tempatkan coffee table di tengah karpet.',
+              done: coffeeTableOnRugCenter
+            },
+            {
+              label: 'Capai Viewing Distance 100.',
+              done: viewingDistanceIdeal
+            },
+            {
+              label: 'Letakkan kembali furniture setelah penataan.',
+              done: furniturePlaced
+            }
+          ];
+        }
       default:
         return [];
     }
@@ -996,7 +1016,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       },
       {
         title: 'Perbaiki Posisi Sofa',
-        description: 'Sofa membelakangi TV. Buka panel sofa dan putar 180° agar menghadap TV tanpa memindahkan posisinya. Misi ini tidak memakai Viewing Distance Score.'
+        description: 'Sofa dan coffee table belum tertata ideal untuk menonton. Putar sofa agar menghadap TV, atur jaraknya, lalu tempatkan coffee table dengan tepat hingga Viewing Distance mencapai 100.'
       }
     ][this.missionIndex];
   },
@@ -1181,7 +1201,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       if (kind === 'sofa' && this.missionIndex === 5) {
         const title = document.createElement('p');
         title.className = 'interaction-control__label';
-        title.textContent = 'Pindahkan sofa dan sesuaikan arah hadapnya. Rotasi tidak menggeser posisi.';
+        title.textContent = 'Sesuaikan arah hadap dan posisi sofa, lalu atur coffee table agar Viewing Distance mencapai 100.';
         this.controls.append(
           title,
           this.makeButton(isMoving ? 'Selesai Move Mode' : 'Move Mode', 'furniture-move', isMoving, true),

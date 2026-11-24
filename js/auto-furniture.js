@@ -362,7 +362,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
         return new THREE.Vector3(x, this.getFloorY(), tvCenter.z);
       }
       case 'sofa':
-        return new THREE.Vector3(0.128, this.getFloorY(), -0.179);
+        return new THREE.Vector3(0.85, this.getFloorY(), 0.1);
       case 'door': {
         const center = box.getCenter(new THREE.Vector3());
         const wallX = room.inside.maxX;

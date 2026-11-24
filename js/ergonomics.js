@@ -6,6 +6,9 @@ const ERGONOMY_METRICS = [
 ];
 
 const scoreClamp = value => Math.max(0, Math.min(100, Math.round(value)));
+const IDEAL_VIEWING_DISTANCE = {min: 3.1, max: 3.6};
+const IDEAL_SOFA_TABLE_CLEARANCE = {min: 0.15, max: 0.35};
+const IDEAL_SOFA_FACING_DOT = Math.cos(THREE.MathUtils.degToRad(20));
 const itemCenter = item => new THREE.Vector3(
   (item.collider.minX + item.collider.maxX) / 2,
   (item.collider.minY + item.collider.maxY) / 2,
@@ -22,6 +25,7 @@ const scoreCategory = score => score >= 90
 AFRAME.registerComponent('ergonomics-evaluator', {
   init() {
     this.lastUpdate = 0;
+    this.lastViewingDistanceDebugKey = '';
     this.baselines = null;
     this.scores = {
       viewingDistance: 40,
@@ -100,14 +104,145 @@ AFRAME.registerComponent('ergonomics-evaluator', {
   },
 
   scoreViewingDistance(items, loader) {
+    const status = this.getViewingDistanceStatus(items, loader);
+    this.logViewingDistanceDebug(status);
+    return status.score;
+  },
+
+  getViewingDistanceStatus(items, loader) {
     const tv = items.find(item => item.role === 'tv') ||
       loader?.placedModels.find(item => item.role.type === 'tv');
     const sofa = items.find(item => item.role === 'sofa');
-    if (!tv || !sofa) return 70;
+    const coffeeTable = items.find(item => item.id === 'MEJA') ||
+      items.find(item => item.role === 'table');
+    const rug = loader?.placedModels.find(item => item.role.type === 'rug' && item.bounds);
+    if (!tv?.collider || !sofa?.collider || !sofa.transform?.object3D ||
+        !coffeeTable?.collider || !rug?.bounds) {
+      return {
+        angleDegrees: null,
+        distance: null,
+        sofaCoffeeTableClearance: null,
+        coffeeTableSuitable: false,
+        coffeeTableOnRugCenter: false,
+        facingTV: false,
+        distanceIdeal: false,
+        score: 0
+      };
+    }
+
     const tvCenter = itemCenter(tv);
     const sofaCenter = itemCenter(sofa);
-    const distance = Math.hypot(tvCenter.x - sofaCenter.x, tvCenter.z - sofaCenter.z);
-    return scoreClamp(100 - Math.abs(distance - 2.8) * 35);
+    const toTV = tvCenter.sub(sofaCenter);
+    toTV.y = 0;
+    const distance = toTV.length();
+    const directionToTV = distance > 0.001 ? toTV.clone().normalize() : new THREE.Vector3();
+    const sofaYaw = this.el.components['furniture-editor']?.getItemWorldPose(sofa)?.yaw ??
+      sofa.transform.object3D.rotation.y;
+    const sofaForward = new THREE.Vector3(-1, 0, 0)
+      .applyAxisAngle(new THREE.Vector3(0, 1, 0), sofaYaw);
+    const facingDot = distance > 0.001 ? sofaForward.dot(directionToTV) : -1;
+    const angleDegrees = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(facingDot, -1, 1)));
+    const facingTV = facingDot >= IDEAL_SOFA_FACING_DOT;
+    const distanceIdeal = distance >= IDEAL_VIEWING_DISTANCE.min &&
+      distance <= IDEAL_VIEWING_DISTANCE.max;
+
+    const tableOffset = itemCenter(coffeeTable).sub(sofaCenter);
+    tableOffset.y = 0;
+    const tableForwardDistance = tableOffset.dot(directionToTV);
+    const tableLateralDistance = Math.abs(
+      tableOffset.x * directionToTV.z - tableOffset.z * directionToTV.x
+    );
+    const coffeeTableCenter = itemCenter(coffeeTable);
+    const rugCenter = rug.bounds.getCenter(new THREE.Vector3());
+    const rugCenterOffset = Math.hypot(
+      coffeeTableCenter.x - rugCenter.x,
+      coffeeTableCenter.z - rugCenter.z
+    );
+    const coffeeTableFitsOnRug =
+      coffeeTable.collider.minX >= rug.bounds.min.x &&
+      coffeeTable.collider.maxX <= rug.bounds.max.x &&
+      coffeeTable.collider.minZ >= rug.bounds.min.z &&
+      coffeeTable.collider.maxZ <= rug.bounds.max.z;
+    const coffeeTableOnRugCenter = coffeeTableFitsOnRug && rugCenterOffset <= 0.45;
+    const sofaHalfExtent = Math.abs(directionToTV.x) * (sofa.collider.maxX - sofa.collider.minX) / 2 +
+      Math.abs(directionToTV.z) * (sofa.collider.maxZ - sofa.collider.minZ) / 2;
+    const tableHalfExtent = Math.abs(directionToTV.x) * (coffeeTable.collider.maxX - coffeeTable.collider.minX) / 2 +
+      Math.abs(directionToTV.z) * (coffeeTable.collider.maxZ - coffeeTable.collider.minZ) / 2;
+    const sofaCoffeeTableClearance = tableForwardDistance - sofaHalfExtent - tableHalfExtent;
+    const tableFitsBeforeTV = tableForwardDistance + tableHalfExtent <= distance - 0.35;
+    const coffeeTableSuitable = sofaCoffeeTableClearance >= IDEAL_SOFA_TABLE_CLEARANCE.min &&
+      sofaCoffeeTableClearance <= IDEAL_SOFA_TABLE_CLEARANCE.max &&
+      tableFitsBeforeTV &&
+      tableForwardDistance > 0 &&
+      tableLateralDistance <= 0.65 &&
+      coffeeTableOnRugCenter;
+
+    const distanceQuality = distanceIdeal
+      ? 100
+      : Math.max(0, 100 - Math.max(
+        IDEAL_VIEWING_DISTANCE.min - distance,
+        distance - IDEAL_VIEWING_DISTANCE.max,
+        0
+      ) * 45);
+    const facingQuality = Math.max(0, Math.min(
+      100,
+      100 * (facingDot + 1) / (IDEAL_SOFA_FACING_DOT + 1)
+    ));
+    const clearanceQuality = sofaCoffeeTableClearance <= 0
+      ? Math.max(40, 60 + sofaCoffeeTableClearance * 50)
+      : sofaCoffeeTableClearance < 0.1
+        ? 60 + sofaCoffeeTableClearance * 100
+        : sofaCoffeeTableClearance < IDEAL_SOFA_TABLE_CLEARANCE.min
+          ? 70 + (sofaCoffeeTableClearance - 0.1) *
+            10 / (IDEAL_SOFA_TABLE_CLEARANCE.min - 0.1)
+          : sofaCoffeeTableClearance < IDEAL_SOFA_TABLE_CLEARANCE.max
+            ? 90 + (sofaCoffeeTableClearance - IDEAL_SOFA_TABLE_CLEARANCE.min) /
+              (IDEAL_SOFA_TABLE_CLEARANCE.max - IDEAL_SOFA_TABLE_CLEARANCE.min) * 10
+            : Math.max(0, 100 - (sofaCoffeeTableClearance - IDEAL_SOFA_TABLE_CLEARANCE.max) * 50);
+    const tableQuality = Math.min(
+      clearanceQuality,
+      Math.max(0, 100 - Math.max(0, tableLateralDistance - 0.65) * 55),
+      tableFitsBeforeTV ? 100 : 0
+    );
+    const rugQuality = Math.min(
+      coffeeTableFitsOnRug ? 100 : 0,
+      Math.max(0, 100 - rugCenterOffset * 100)
+    );
+    const score = facingTV && distanceIdeal && coffeeTableSuitable
+      ? 100
+      : scoreClamp(Math.min(
+        99,
+        clearanceQuality,
+        facingQuality * 0.3 + distanceQuality * 0.35 + tableQuality * 0.2 + rugQuality * 0.15
+      ));
+
+    return {
+      angleDegrees,
+      distance,
+      sofaCoffeeTableClearance,
+      coffeeTableSuitable,
+      coffeeTableOnRugCenter,
+      facingTV,
+      distanceIdeal,
+      score
+    };
+  },
+
+  logViewingDistanceDebug(status) {
+    const logData = {
+      sofaAngleToTV: status.angleDegrees === null ? null : Number(status.angleDegrees.toFixed(1)),
+      sofaDistanceToTV: status.distance === null ? null : Number(status.distance.toFixed(2)),
+      sofaCoffeeTableClearance: status.sofaCoffeeTableClearance === null
+        ? null
+        : Number(status.sofaCoffeeTableClearance.toFixed(2)),
+      coffeeTableSuitable: status.coffeeTableSuitable,
+      coffeeTableOnRugCenter: status.coffeeTableOnRugCenter,
+      viewingDistance: status.score
+    };
+    const key = JSON.stringify(logData);
+    if (key === this.lastViewingDistanceDebugKey) return;
+    this.lastViewingDistanceDebugKey = key;
+    console.info('[Viewing Distance Debug]', logData);
   },
 
   scoreNoiseControl(items, gameplay, loader) {
