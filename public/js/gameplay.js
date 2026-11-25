@@ -1,5 +1,7 @@
 import telephoneAudioUrl from '../../assets/telephone.mp3?url';
 import acAudioUrl from '../../assets/ac.mp3?url';
+import tvVideoUrl from '../tv_video/video.mp4?url';
+import tvAudioUrl from '../tv_video/kaget.mp3?url';
 
 const LIGHTING_SCORES = {25: 35, 50: 75, 75: 100, 100: 40};
 const LIGHT_LEVELS = {25: 0.34, 50: 0.67, 75: 1, 100: 1.34};
@@ -35,12 +37,53 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.acAudioGain.gain.value = 7;
     this.acAudioContext.createMediaElementSource(this.acAudio).connect(this.acAudioGain);
     this.acAudioGain.connect(this.acAudioContext.destination);
+    this.initTVMedia();
     this.acAudioStarting = false;
     this.gameplayStarted = false;
     this.gameplayStartPending = false;
     this.onACUserGesture = () => this.syncACAudio();
     document.addEventListener('pointerdown', this.onACUserGesture, true);
     document.addEventListener('keydown', this.onACUserGesture, true);
+    this.onTVUserGesture = () => {
+      this.tvVideoNeedsGesture = false;
+      this.tvAudioNeedsGesture = false;
+      this.syncTVPlayback();
+    };
+    document.addEventListener('pointerdown', this.onTVUserGesture, true);
+    document.addEventListener('keydown', this.onTVUserGesture, true);
+    this.onTVVisibilityChange = () => {
+      if (document.hidden) {
+        this.tvVideo?.pause();
+        this.tvAudio?.pause();
+      } else {
+        this.syncTVPlayback();
+      }
+    };
+    document.addEventListener('visibilitychange', this.onTVVisibilityChange);
+    this.onTVVideoWaiting = () => {
+      this.tvVideoBuffering = true;
+      this.tvAudio?.pause();
+    };
+    this.onTVVideoPlaying = () => {
+      this.tvVideoBuffering = false;
+      this.syncTVPlayback();
+    };
+    this.onTVVideoSeeking = () => {
+      this.tvVideoBuffering = true;
+      this.tvAudio?.pause();
+    };
+    this.onTVVideoSeeked = () => {
+      this.tvVideoBuffering = false;
+      this.syncTVPlayback(true);
+    };
+    this.onTVMediaReady = () => this.syncTVPlayback();
+    this.tvVideo.addEventListener('waiting', this.onTVVideoWaiting);
+    this.tvVideo.addEventListener('playing', this.onTVVideoPlaying);
+    this.tvVideo.addEventListener('seeking', this.onTVVideoSeeking);
+    this.tvVideo.addEventListener('seeked', this.onTVVideoSeeked);
+    this.tvAudio.addEventListener('loadedmetadata', this.onTVMediaReady);
+    this.tvAudio.addEventListener('canplay', this.onTVMediaReady);
+    this.tvVideo.addEventListener('canplay', this.onTVMediaReady);
     this.onGameplayStarted = () => {
       if (this.gameplayStarted || this.gameplayStartPending) return;
       this.gameplayStartPending = true;
@@ -241,7 +284,368 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.renderMission(this.getMissionObjectives(), false);
   },
 
+  initTVMedia() {
+    this.tvVideo = document.createElement('video');
+    this.tvVideo.src = tvVideoUrl;
+    this.tvVideo.preload = 'auto';
+    this.tvVideo.loop = true;
+    this.tvVideo.muted = true;
+    this.tvVideo.defaultMuted = true;
+    this.tvVideo.volume = 0;
+    this.tvVideo.playsInline = true;
+    this.tvVideo.setAttribute('playsinline', '');
+    this.tvVideo.setAttribute('muted', '');
+    this.tvVideo.setAttribute('aria-hidden', 'true');
+    this.tvVideoCanvas = document.createElement('canvas');
+    this.tvVideoCanvas.width = 1024;
+    this.tvVideoCanvas.height = 576;
+    this.tvVideoCanvasContext = this.tvVideoCanvas.getContext('2d');
+    this.tvVideoCanvasContext.fillStyle = '#000000';
+    this.tvVideoCanvasContext.fillRect(0, 0, this.tvVideoCanvas.width, this.tvVideoCanvas.height);
+    this.tvVideoTexture = new THREE.CanvasTexture(this.tvVideoCanvas);
+    this.tvVideoTexture.colorSpace = THREE.SRGBColorSpace;
+    this.tvVideoTexture.flipY = true;
+    this.tvVideoTexture.generateMipmaps = false;
+    this.tvVideoFrameTime = -1;
+    this.tvScreenMaterial = new THREE.MeshBasicMaterial({
+      map: this.tvVideoTexture,
+      side: THREE.DoubleSide,
+      toneMapped: false
+    });
+    this.tvVideoBuffering = false;
+    this.tvVideoStarting = false;
+    this.tvAudioStarting = false;
+    this.tvAudioContextStarting = false;
+    this.tvVideoNeedsGesture = false;
+    this.tvAudioNeedsGesture = false;
+
+    this.tvAudio = document.createElement('audio');
+    this.tvAudio.preload = 'auto';
+    this.tvAudio.loop = true;
+    this.tvAudio.crossOrigin = 'anonymous';
+    this.tvAudio.src = tvAudioUrl;
+    this.tvAudio.load();
+    this.tvAudioContext = this.acAudioContext;
+    this.tvAudioSource = this.tvAudioContext.createMediaElementSource(this.tvAudio);
+    this.tvSpeakerAudio = {};
+    for (const side of ['left', 'right']) {
+      const gain = this.tvAudioContext.createGain();
+      const panner = this.tvAudioContext.createPanner();
+      panner.panningModel = 'HRTF';
+      panner.distanceModel = 'inverse';
+      panner.refDistance = 1.25;
+      panner.maxDistance = 18;
+      panner.rolloffFactor = 0.85;
+      this.tvAudioSource.connect(gain);
+      gain.connect(panner);
+      panner.connect(this.tvAudioContext.destination);
+      this.tvSpeakerAudio[side] = {gain, panner};
+    }
+    this.syncSpeakerAudioGains();
+    this.tvVideo.load();
+  },
+
+  syncTVPlayback(forceAudioSeek = false) {
+    if (!this.tvVideo || !this.tvAudio) return;
+    // The MP4 is a silent visual surface; only kaget.mp3 enters the audio graph.
+    this.tvVideo.muted = true;
+    this.tvVideo.defaultMuted = true;
+    this.tvVideo.volume = 0;
+
+    if (!this.audioState.tvOn) {
+      this.tvVideo.pause();
+      this.tvAudio.pause();
+      this.tvAudio.playbackRate = 1;
+      if (this.tvVideo.readyState >= HTMLMediaElement.HAVE_METADATA && this.tvVideo.currentTime > 0.01) this.tvVideo.currentTime = 0;
+      if (this.tvAudio.readyState >= HTMLMediaElement.HAVE_METADATA && this.tvAudio.currentTime > 0.01) this.tvAudio.currentTime = 0;
+      return;
+    }
+    if (document.hidden) {
+      this.tvVideo.pause();
+      this.tvAudio.pause();
+      return;
+    }
+    this.resumeTVAudioContext();
+
+    if (this.tvVideo.paused) {
+      this.tvAudio.pause();
+      if (this.tvVideoNeedsGesture || this.tvVideoStarting) return;
+      this.tvVideoStarting = true;
+      let playRequest;
+      try {
+        playRequest = this.tvVideo.play();
+      } catch (error) {
+        this.tvVideoStarting = false;
+        this.handleTVPlayError(error, 'video');
+        return;
+      }
+      Promise.resolve(playRequest)
+        .then(() => {
+          if (!this.audioState.tvOn || document.hidden) {
+            this.tvVideo.pause();
+            return;
+          }
+          this.syncTVPlayback();
+        })
+        .catch(error => this.handleTVPlayError(error, 'video'))
+        .finally(() => {
+          this.tvVideoStarting = false;
+        });
+      return;
+    }
+
+    if (
+      this.tvVideo.seeking ||
+      this.tvVideoBuffering ||
+      this.tvVideo.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
+    ) {
+      this.tvAudio.pause();
+      return;
+    }
+
+    if (this.tvAudio.readyState < HTMLMediaElement.HAVE_METADATA) return;
+    this.syncTVAudioClock(forceAudioSeek);
+    if (this.tvAudioContext.state !== 'running') return;
+    if (this.tvAudio.paused && !this.tvAudioNeedsGesture && !this.tvAudioStarting) {
+      this.startTVAudio();
+    }
+  },
+
+  resumeTVAudioContext() {
+    if (
+      this.tvAudioContext.state === 'running' ||
+      this.tvAudioContext.state === 'closed' ||
+      this.tvAudioContextStarting ||
+      this.tvAudioNeedsGesture
+    ) return;
+    this.tvAudioContextStarting = true;
+    let resumeRequest;
+    try {
+      resumeRequest = this.tvAudioContext.resume();
+    } catch (error) {
+      this.tvAudioContextStarting = false;
+      this.handleTVPlayError(error, 'audio');
+      return;
+    }
+    Promise.resolve(resumeRequest)
+      .then(() => {
+        if (this.audioState.tvOn && !this.tvVideo.paused && !document.hidden) this.syncTVPlayback();
+      })
+      .catch(error => this.handleTVPlayError(error, 'audio'))
+      .finally(() => { this.tvAudioContextStarting = false; });
+  },
+
+  startTVAudio() {
+    if (
+      !this.audioState.tvOn ||
+      this.tvVideo.paused ||
+      this.tvVideo.seeking ||
+      this.tvVideoBuffering ||
+      this.tvAudio.readyState < HTMLMediaElement.HAVE_METADATA ||
+      this.tvAudioStarting
+    ) return;
+
+    this.tvAudioStarting = true;
+    this.syncTVAudioClock(true);
+    let resumeRequest;
+    let playRequest;
+    try {
+      resumeRequest = this.tvAudioContext.state === 'suspended'
+        ? this.tvAudioContext.resume()
+        : Promise.resolve();
+      playRequest = this.tvAudio.play();
+    } catch (error) {
+      this.tvAudioStarting = false;
+      this.handleTVPlayError(error, 'audio');
+      return;
+    }
+
+    Promise.all([resumeRequest, playRequest])
+      .then(() => {
+        if (!this.audioState.tvOn || this.tvVideo.paused || document.hidden) {
+          this.tvAudio.pause();
+          return;
+        }
+        this.tvAudioNeedsGesture = false;
+        this.syncTVAudioClock(true);
+      })
+      .catch(error => this.handleTVPlayError(error, 'audio'))
+      .finally(() => {
+        this.tvAudioStarting = false;
+      });
+  },
+
+  handleTVPlayError(error, media) {
+    if (error?.name === 'AbortError') return;
+    if (media === 'video') this.tvVideoNeedsGesture = true;
+    else this.tvAudioNeedsGesture = true;
+    if (error?.name === 'NotAllowedError' || this.tvAudioContext?.state === 'suspended') {
+      return;
+    }
+    console.error(`[gameplay] TV ${media} playback could not be started.`, error);
+  },
+
+  getTVAudioTime() {
+    const videoTime = Number.isFinite(this.tvVideo?.currentTime) ? this.tvVideo.currentTime : 0;
+    const duration = this.tvAudio?.duration;
+    if (!Number.isFinite(duration) || duration <= 0) return videoTime;
+    return videoTime % duration;
+  },
+
+  syncTVAudioClock(force = false) {
+    if (this.tvAudio.readyState < HTMLMediaElement.HAVE_METADATA) return;
+    const duration = this.tvAudio.duration;
+    const target = this.getTVAudioTime();
+    let drift = this.tvAudio.currentTime - target;
+    if (Number.isFinite(duration) && duration > 0) {
+      if (drift > duration / 2) drift -= duration;
+      else if (drift < -duration / 2) drift += duration;
+    }
+
+    if (force || Math.abs(drift) > 0.28) {
+      this.tvAudio.currentTime = target;
+      this.tvAudio.playbackRate = 1;
+    } else if (Math.abs(drift) > 0.045) {
+      this.tvAudio.playbackRate = Math.max(0.95, Math.min(1.05, 1 - drift * 0.18));
+    } else {
+      this.tvAudio.playbackRate = 1;
+    }
+  },
+
+  syncSpeakerAudioGains() {
+    if (!this.tvSpeakerAudio || !this.audioState) return;
+    for (const side of ['left', 'right']) {
+      const enabled = this.audioState[side === 'left' ? 'speakerLeftOn' : 'speakerRightOn'];
+      const volume = this.audioState[side === 'left' ? 'speakerLeftVolume' : 'speakerRightVolume'];
+      const gain = this.tvSpeakerAudio[side]?.gain?.gain;
+      if (gain) gain.value = enabled ? volume / 100 : 0;
+    }
+  },
+
+  syncSpeakerAudioPositions() {
+    if (!this.tvAudioContext || !this.tvSpeakerAudio) return;
+    const listener = this.tvAudioContext.listener;
+    const cameraEntity = document.getElementById('player-camera');
+    const camera = cameraEntity?.getObject3D('camera') || cameraEntity?.object3D;
+    if (camera) {
+      const position = camera.getWorldPosition(new THREE.Vector3());
+      const forward = camera.getWorldDirection(new THREE.Vector3());
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+      if (listener.positionX) {
+        listener.positionX.value = position.x;
+        listener.positionY.value = position.y;
+        listener.positionZ.value = position.z;
+        listener.forwardX.value = forward.x;
+        listener.forwardY.value = forward.y;
+        listener.forwardZ.value = forward.z;
+        listener.upX.value = up.x;
+        listener.upY.value = up.y;
+        listener.upZ.value = up.z;
+      } else {
+        listener.setPosition(position.x, position.y, position.z);
+        listener.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+      }
+    }
+
+    for (const item of this.getRuntimeModelItems().filter(model => model.role === 'speaker')) {
+      const nodes = this.tvSpeakerAudio[this.getSpeakerSide(item)];
+      if (!nodes?.panner || !item.entity?.object3D) continue;
+      if (!item.audioLocalPosition) item.audioLocalPosition = this.getEntityLocalBoundsCenter(item.entity);
+      const position = item.audioLocalPosition?.clone() || new THREE.Vector3();
+      item.entity.object3D.localToWorld(position);
+      const panner = nodes.panner;
+      if (panner.positionX) {
+        panner.positionX.value = position.x;
+        panner.positionY.value = position.y;
+        panner.positionZ.value = position.z;
+      } else {
+        panner.setPosition(position.x, position.y, position.z);
+      }
+    }
+  },
+
+  configureTVVideoSurface(item) {
+    const mesh = item.tvScreenMesh;
+    const originalGeometry = mesh.geometry;
+    const originalUV = originalGeometry.attributes.uv;
+    if (!originalUV || originalUV.count === 0) {
+      console.error('[gameplay] The TV screen mesh has no UV coordinates.');
+      return;
+    }
+
+    let minU = Infinity;
+    let minV = Infinity;
+    let maxU = -Infinity;
+    let maxV = -Infinity;
+    for (let index = 0; index < originalUV.count; index++) {
+      minU = Math.min(minU, originalUV.getX(index));
+      minV = Math.min(minV, originalUV.getY(index));
+      maxU = Math.max(maxU, originalUV.getX(index));
+      maxV = Math.max(maxV, originalUV.getY(index));
+    }
+    if (maxU <= minU || maxV <= minV) {
+      console.error('[gameplay] The TV screen mesh has invalid UV coordinates.');
+      return;
+    }
+
+    const geometry = originalGeometry.clone();
+    const normalizedUV = [];
+    for (let index = 0; index < originalUV.count; index++) {
+      normalizedUV.push(
+        (originalUV.getX(index) - minU) / (maxU - minU),
+        (originalUV.getY(index) - minV) / (maxV - minV)
+      );
+    }
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(normalizedUV, 2));
+    geometry.computeBoundingBox();
+    const screenSize = geometry.boundingBox.getSize(new THREE.Vector3());
+    if (screenSize.x <= 0 || screenSize.y <= 0) {
+      geometry.dispose();
+      console.error('[gameplay] The TV screen mesh has invalid dimensions.');
+      return;
+    }
+
+    item.tvOriginalScreenGeometry = originalGeometry;
+    item.tvVideoScreenGeometry = geometry;
+    mesh.geometry = geometry;
+    this.tvVideoCanvas.width = 1024;
+    this.tvVideoCanvas.height = Math.max(1, Math.round(1024 * screenSize.y / screenSize.x));
+    this.tvVideoCanvasContext.fillStyle = '#000000';
+    this.tvVideoCanvasContext.fillRect(0, 0, this.tvVideoCanvas.width, this.tvVideoCanvas.height);
+    this.tvVideoTexture.needsUpdate = true;
+    this.tvVideoFrameTime = -1;
+  },
+
+  updateTVVideoFrame() {
+    const video = this.tvVideo;
+    if (
+      !this.audioState.tvOn ||
+      video.paused ||
+      video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+      !video.videoWidth ||
+      !video.videoHeight ||
+      video.currentTime === this.tvVideoFrameTime
+    ) return;
+
+    const canvas = this.tvVideoCanvas;
+    const scale = Math.min(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
+    const width = video.videoWidth * scale;
+    const height = video.videoHeight * scale;
+    this.tvVideoCanvasContext.fillStyle = '#000000';
+    this.tvVideoCanvasContext.fillRect(0, 0, canvas.width, canvas.height);
+    this.tvVideoCanvasContext.drawImage(
+      video,
+      (canvas.width - width) / 2,
+      (canvas.height - height) / 2,
+      width,
+      height
+    );
+    this.tvVideoTexture.needsUpdate = true;
+    this.tvVideoFrameTime = video.currentTime;
+  },
+
   tick(time) {
+    this.updateTVVideoFrame();
     const editor = this.el.components['furniture-editor'];
     const loader = this.el.components['auto-furniture-loader'];
     if (!this.readyForScoring(editor, loader)) {
@@ -257,6 +661,8 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       this.updateTVAppearance(tv);
       this.appliedTV = tv;
     }
+    this.syncTVPlayback();
+    this.syncSpeakerAudioPositions();
 
     if (time - this.lastTargetCheck < 80) return;
     this.lastTargetCheck = time;
@@ -515,6 +921,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     else if (target.kind === 'tv') {
       this.audioState.tvOn = !this.audioState.tvOn;
       this.updateTVAppearance();
+      this.syncTVPlayback();
     } else if (target.kind === 'phone') {
       this.audioState.phoneOn = !this.audioState.phoneOn;
       this.syncPhoneAudio();
@@ -647,6 +1054,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
   setVolume(key, value) {
     if (!key || !Object.prototype.hasOwnProperty.call(this.audioState, key) || !Number.isFinite(value)) return;
     this.audioState[key] = Math.max(0, Math.min(100, Math.round(value)));
+    this.syncSpeakerAudioGains();
     this.refreshScores();
   },
 
@@ -798,6 +1206,25 @@ AFRAME.registerComponent('ergonomics-gameplay', {
 
   updateTVAppearance(item = this.activeTarget?.item) {
     if (!item || item.role !== 'tv') return;
+    const root = item.entity?.getObject3D('mesh');
+    if (!item.tvScreenMesh && root) {
+      root.traverse(object => {
+        if (!item.tvScreenMesh && object.isMesh && /^TV[_ ]49Zoll[_ ]Screen1_0$/i.test(object.name)) {
+          item.tvScreenMesh = object;
+          item.tvOriginalScreenMaterial = object.material;
+          this.configureTVVideoSurface(item);
+        }
+      });
+      if (!item.tvScreenMesh && !this.tvScreenWarningShown) {
+        this.tvScreenWarningShown = true;
+        console.warn('[gameplay] The TV model screen mesh was not found. Expected TV 49Zoll_Screen1_0.');
+      }
+    }
+    if (item.tvScreenMesh) {
+      item.tvScreenMesh.material = this.audioState.tvOn
+        ? this.tvScreenMaterial
+        : item.tvOriginalScreenMaterial;
+    }
     for (const state of item.materials) {
       if (!state.material.emissive) continue;
       if (this.audioState.tvOn) {
@@ -844,6 +1271,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       case 'tv-power':
         this.audioState.tvOn = !this.audioState.tvOn;
         this.updateTVAppearance();
+        this.syncTVPlayback();
         break;
       case 'speaker-rotate-left':
         this.rotateSpeaker(-15);
@@ -913,6 +1341,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         else editor?.rotateGrabbed(15);
         break;
     }
+    this.syncSpeakerAudioGains();
     this.applyLighting();
     this.renderPanel();
     this.refreshScores();
@@ -1363,6 +1792,40 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.panel?.removeEventListener('click', this.onPanelClick);
     this.panel?.removeEventListener('input', this.onPanelInput);
     this.doorPopup?.removeEventListener('click', this.onDoorPopupClick);
+    document.removeEventListener('pointerdown', this.onTVUserGesture, true);
+    document.removeEventListener('keydown', this.onTVUserGesture, true);
+    document.removeEventListener('visibilitychange', this.onTVVisibilityChange);
+    this.tvVideo?.removeEventListener('waiting', this.onTVVideoWaiting);
+    this.tvVideo?.removeEventListener('playing', this.onTVVideoPlaying);
+    this.tvVideo?.removeEventListener('seeking', this.onTVVideoSeeking);
+    this.tvVideo?.removeEventListener('seeked', this.onTVVideoSeeked);
+    this.tvVideo?.removeEventListener('canplay', this.onTVMediaReady);
+    this.tvAudio?.removeEventListener('loadedmetadata', this.onTVMediaReady);
+    this.tvAudio?.removeEventListener('canplay', this.onTVMediaReady);
+    this.tvVideo?.pause();
+    this.tvAudio?.pause();
+    if (this.appliedTV?.tvScreenMesh) {
+      this.appliedTV.tvScreenMesh.material = this.appliedTV.tvOriginalScreenMaterial;
+      if (this.appliedTV.tvOriginalScreenGeometry && this.appliedTV.tvVideoScreenGeometry) {
+        this.appliedTV.tvScreenMesh.geometry = this.appliedTV.tvOriginalScreenGeometry;
+        this.appliedTV.tvVideoScreenGeometry.dispose();
+      }
+    }
+    this.tvAudioSource?.disconnect();
+    for (const nodes of Object.values(this.tvSpeakerAudio || {})) {
+      nodes.gain.disconnect();
+      nodes.panner.disconnect();
+    }
+    this.tvVideoTexture?.dispose();
+    this.tvScreenMaterial?.dispose();
+    if (this.tvVideo) {
+      this.tvVideo.removeAttribute('src');
+      this.tvVideo.load();
+    }
+    if (this.tvAudio) {
+      this.tvAudio.removeAttribute('src');
+      this.tvAudio.load();
+    }
     document.body.classList.remove('is-interaction-panel-open');
   }
 });
