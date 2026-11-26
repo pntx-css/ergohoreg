@@ -6,7 +6,7 @@ const ERGONOMY_METRICS = [
 ];
 
 const scoreClamp = value => Math.max(0, Math.min(100, Math.round(value)));
-const IDEAL_VIEWING_DISTANCE = {min: 3.1, max: 3.7};
+const IDEAL_VIEWING_DISTANCE = {min: 3.3, max: 3.7};
 const IDEAL_SOFA_TABLE_CLEARANCE = {min: 0.5, max: 0.7};
 const SPEAKER_FACING_DOT_THRESHOLD = Math.cos(THREE.MathUtils.degToRad(60));
 // Half the diagonal of the furniture editor's 0.1 m grid, plus rounding tolerance.

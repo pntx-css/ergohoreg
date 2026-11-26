@@ -159,6 +159,11 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.cinemaRigEnd = null;
     this.cinemaCameraStart = null;
     this.cinemaCameraEnd = null;
+    this.cinemaLookTarget = null;
+    this.cinemaLookStartYaw = 0;
+    this.cinemaLookStartPitch = 0;
+    this.cinemaLookEndYaw = 0;
+    this.cinemaLookEndPitch = 0;
     this.hint = document.getElementById('gameplay-hint');
     this.crosshair = document.getElementById('crosshair');
     this.doorPopup = document.getElementById('door-confirmation-dialog');
@@ -1762,7 +1767,8 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         playerForwardOffset <= usableGapHalfLength + 0.02 &&
         playerLateralOffset <= 0.3,
       facingTV: cameraDirection.dot(directionFromPlayerToTV) >= Math.cos(THREE.MathUtils.degToRad(20)),
-      directionToTV
+      directionToTV,
+      tv
     };
   },
 
@@ -1782,7 +1788,9 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     const positionStatus = this.getCinemaPositionStatus();
     const playerRig = document.getElementById('player-rig');
     const cameraEntity = document.getElementById('player-camera');
-    if (!positionStatus || !playerRig?.object3D || !cameraEntity?.object3D) {
+    const lookControls = cameraEntity?.components['look-controls'];
+    if (!positionStatus || !playerRig?.object3D || !cameraEntity?.object3D ||
+        !lookControls?.yawObject || !lookControls?.pitchObject) {
       console.error('[gameplay] Could not start the cinema sequence because the player camera is unavailable.');
       return;
     }
@@ -1801,6 +1809,40 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.cinemaCameraStart = cameraEntity.object3D.position.clone();
     this.cinemaCameraEnd = this.cinemaCameraStart.clone();
     this.cinemaCameraEnd.y = Math.max(0.9, this.cinemaCameraStart.y - 0.55);
+    this.cinemaLookTarget = positionStatus.tv.tvScreenMesh
+      ? new THREE.Box3().setFromObject(positionStatus.tv.tvScreenMesh).getCenter(new THREE.Vector3())
+      : new THREE.Vector3(
+        (positionStatus.tv.collider.minX + positionStatus.tv.collider.maxX) / 2,
+        positionStatus.tv.collider.minY +
+          (positionStatus.tv.collider.maxY - positionStatus.tv.collider.minY) * 0.7,
+        (positionStatus.tv.collider.minZ + positionStatus.tv.collider.maxZ) / 2
+      );
+
+    playerRig.object3D.updateWorldMatrix(true, false);
+    const rigWorldPosition = playerRig.object3D.getWorldPosition(new THREE.Vector3());
+    const rigParent = playerRig.object3D.parent;
+    const rigEndWorldPosition = rigParent
+      ? rigParent.localToWorld(this.cinemaRigEnd.clone())
+      : this.cinemaRigEnd.clone();
+    const cameraEndWorldPosition = cameraEntity.object3D.getWorldPosition(new THREE.Vector3())
+      .add(rigEndWorldPosition.sub(rigWorldPosition))
+      .add(
+        this.cinemaCameraEnd.clone()
+          .sub(this.cinemaCameraStart)
+          .multiply(playerRig.object3D.getWorldScale(new THREE.Vector3()))
+          .applyQuaternion(playerRig.object3D.getWorldQuaternion(new THREE.Quaternion()))
+      );
+    const directionToScreen = this.cinemaLookTarget.clone().sub(cameraEndWorldPosition).normalize()
+      .applyQuaternion(playerRig.object3D.getWorldQuaternion(new THREE.Quaternion()).invert());
+    this.cinemaLookStartYaw = lookControls.yawObject.rotation.y;
+    this.cinemaLookStartPitch = lookControls.pitchObject.rotation.x;
+    this.cinemaLookEndYaw = Math.atan2(-directionToScreen.x, -directionToScreen.z) -
+      lookControls.magicWindowDeltaEuler.y;
+    this.cinemaLookEndPitch = Math.atan2(
+      directionToScreen.y,
+      Math.hypot(directionToScreen.x, directionToScreen.z)
+    ) - lookControls.magicWindowDeltaEuler.x;
+    lookControls.pause();
   },
 
   updateCinemaAnimation() {
@@ -1812,13 +1854,24 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     if (playerRig?.object3D && cameraEntity?.object3D) {
       playerRig.object3D.position.lerpVectors(this.cinemaRigStart, this.cinemaRigEnd, eased);
       cameraEntity.object3D.position.lerpVectors(this.cinemaCameraStart, this.cinemaCameraEnd, eased);
+      const lookControls = cameraEntity.components['look-controls'];
+      if (lookControls?.yawObject && lookControls?.pitchObject) {
+        const yawDelta = Math.atan2(
+          Math.sin(this.cinemaLookEndYaw - this.cinemaLookStartYaw),
+          Math.cos(this.cinemaLookEndYaw - this.cinemaLookStartYaw)
+        );
+        lookControls.yawObject.rotation.y = this.cinemaLookStartYaw + yawDelta * eased;
+        lookControls.pitchObject.rotation.x = this.cinemaLookStartPitch +
+          (this.cinemaLookEndPitch - this.cinemaLookStartPitch) * eased;
+        lookControls.updateOrientation();
+      }
     }
 
-    if (elapsed >= 2800 && !this.cinemaFadeStarted) {
+    if (elapsed >= 5500 && !this.cinemaFadeStarted) {
       this.cinemaFadeStarted = true;
       document.body.classList.add('is-cinema-fading');
     }
-    if (elapsed >= 3800 && !this.cinemaReloadScheduled) {
+    if (elapsed >= 6500 && !this.cinemaReloadScheduled) {
       this.cinemaReloadScheduled = true;
       window.location.reload();
     }
