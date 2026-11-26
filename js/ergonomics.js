@@ -6,8 +6,9 @@ const ERGONOMY_METRICS = [
 ];
 
 const scoreClamp = value => Math.max(0, Math.min(100, Math.round(value)));
-const IDEAL_VIEWING_DISTANCE = {min: 3.1, max: 3.6};
-const IDEAL_SOFA_TABLE_CLEARANCE = {min: 0.15, max: 0.35};
+const IDEAL_VIEWING_DISTANCE = {min: 3.1, max: 3.7};
+const IDEAL_SOFA_TABLE_CLEARANCE = {min: 0.5, max: 0.7};
+const SPEAKER_FACING_DOT_THRESHOLD = Math.cos(THREE.MathUtils.degToRad(60));
 // Half the diagonal of the furniture editor's 0.1 m grid, plus rounding tolerance.
 const FURNITURE_ALIGNMENT_TOLERANCE = 0.08;
 const IDEAL_SOFA_FACING_DOT = Math.cos(THREE.MathUtils.degToRad(20));
@@ -199,15 +200,12 @@ AFRAME.registerComponent('ergonomics-evaluator', {
     ));
     const clearanceQuality = sofaCoffeeTableClearance <= 0
       ? Math.max(40, 60 + sofaCoffeeTableClearance * 50)
-      : sofaCoffeeTableClearance < 0.1
-        ? 60 + sofaCoffeeTableClearance * 100
-        : sofaCoffeeTableClearance < IDEAL_SOFA_TABLE_CLEARANCE.min
-          ? 70 + (sofaCoffeeTableClearance - 0.1) *
-            10 / (IDEAL_SOFA_TABLE_CLEARANCE.min - 0.1)
-          : sofaCoffeeTableClearance < IDEAL_SOFA_TABLE_CLEARANCE.max
-            ? 90 + (sofaCoffeeTableClearance - IDEAL_SOFA_TABLE_CLEARANCE.min) /
-              (IDEAL_SOFA_TABLE_CLEARANCE.max - IDEAL_SOFA_TABLE_CLEARANCE.min) * 10
-            : Math.max(0, 100 - (sofaCoffeeTableClearance - IDEAL_SOFA_TABLE_CLEARANCE.max) * 50);
+      : sofaCoffeeTableClearance < IDEAL_SOFA_TABLE_CLEARANCE.min
+        ? Math.max(0, 90 - (IDEAL_SOFA_TABLE_CLEARANCE.min - sofaCoffeeTableClearance) * 100)
+        : sofaCoffeeTableClearance < IDEAL_SOFA_TABLE_CLEARANCE.max
+          ? 90 + (sofaCoffeeTableClearance - IDEAL_SOFA_TABLE_CLEARANCE.min) /
+            (IDEAL_SOFA_TABLE_CLEARANCE.max - IDEAL_SOFA_TABLE_CLEARANCE.min) * 10
+          : Math.max(0, 100 - (sofaCoffeeTableClearance - IDEAL_SOFA_TABLE_CLEARANCE.max) * 50);
     const tableQuality = Math.min(
       clearanceQuality,
       Math.max(0, 100 - Math.max(0, tableLateralDistance - FURNITURE_ALIGNMENT_TOLERANCE) * 55),
@@ -280,7 +278,7 @@ AFRAME.registerComponent('ergonomics-evaluator', {
         ).y;
         const forward = new THREE.Vector3(1, 0, 0)
           .applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-        penalty += Math.max(0, 0.75 - forward.dot(toSofa)) * 12;
+        penalty += Math.max(0, SPEAKER_FACING_DOT_THRESHOLD - forward.dot(toSofa)) * 12;
       }
     }
     if (gameplay.audioState.acOn && gameplay.audioState.acMode === 'turbo') penalty += 20;

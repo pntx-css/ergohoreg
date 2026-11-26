@@ -440,6 +440,66 @@ body[data-mode="mobile"].is-mobile-device.is-mobile-portrait #mobile-controls {
 .game-completion-popup__panel h2 { margin: 0 0 10px; color: #9be1ca; font-size: clamp(24px, 6vw, 34px); letter-spacing: .04em; }
 .game-completion-popup__panel p { margin: 0; color: #d3e2de; font-size: 15px; line-height: 1.5; }
 
+.enjoy-film-popup {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #eff8f5;
+  text-align: center;
+  background: rgb(1 8 10 / 58%);
+  backdrop-filter: blur(7px);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.enjoy-film-popup[hidden] { display: none; }
+.enjoy-film-popup__panel { width: min(380px, 100%); padding: 30px 26px; border: 1px solid rgb(198 255 232 / 30%); border-radius: 18px; background: #10282c; box-shadow: 0 22px 70px rgb(0 0 0 / 40%); }
+.enjoy-film-popup__panel p { margin: 0 0 8px; color: #9be1ca; font-size: 10px; font-weight: 700; letter-spacing: .16em; }
+.enjoy-film-popup__panel h2 { margin: 0; font-size: clamp(26px, 7vw, 34px); }
+.enjoy-film-popup__panel button { min-width: 120px; min-height: 48px; margin-top: 24px; padding: 0 24px; border: 1px solid #8edec0; border-radius: 999px; color: #10282c; font: 800 14px/1 system-ui, sans-serif; letter-spacing: .04em; cursor: pointer; background: #9be1ca; transition: background 160ms ease, transform 160ms ease; }
+.enjoy-film-popup__panel button:hover,
+.enjoy-film-popup__panel button:focus-visible { outline: 3px solid rgb(142 222 192 / 32%); outline-offset: 3px; background: #b6f4d8; transform: translateY(-1px); }
+.enjoy-film-popup__panel button:active { transform: scale(.97); }
+
+#cinema-blackout {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 800ms ease;
+}
+
+body.is-cinema-mode #cinema-blackout { display: block; }
+body.is-cinema-fading #cinema-blackout { opacity: 1; }
+
+body.is-cinema-mode #crosshair,
+body.is-cinema-mode #mission-text,
+body.is-cinema-mode #ergonomics-panel,
+body.is-cinema-mode #gameplay-hint,
+body.is-cinema-mode #interaction-hint,
+body.is-cinema-mode #controller-status,
+body.is-cinema-mode #position-coordinates,
+body.is-cinema-mode #touch-look,
+body.is-cinema-mode #mobile-controls,
+body.is-cinema-mode #mobile-fullscreen-prompt,
+body.is-cinema-mode #mobile-orientation-overlay,
+body.is-cinema-mode #game-completion-popup,
+body.is-cinema-mode #enjoy-film-popup,
+body.is-cinema-mode #interaction-panel,
+body.is-cinema-mode #door-confirmation-dialog,
+body.is-cinema-mode #f-interaction-popup,
+body.is-cinema-mode #grab-controls,
+body.is-cinema-mode #collision-debug-panel,
+body.is-cinema-mode #start-menu,
+body.is-cinema-mode #settings-dialog {
+  display: none !important;
+}
+
 body.is-start-menu-open #mission-text {
   display: none;
 }

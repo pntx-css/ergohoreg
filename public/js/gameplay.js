@@ -6,6 +6,7 @@ import tvAudioUrl from '../tv_video/kaget.mp3?url';
 const LIGHTING_SCORES = {25: 35, 50: 75, 75: 100, 100: 40};
 const LIGHT_LEVELS = {25: 0.34, 50: 0.67, 75: 1, 100: 1.34};
 const MISSION_COUNT = 6;
+const SPEAKER_FACING_DOT = Math.cos(THREE.MathUtils.degToRad(60));
 const ERGOSIM_URL = 'https://projek-2-enuma.vercel.app/';
 
 AFRAME.registerComponent('ergonomics-gameplay', {
@@ -147,13 +148,26 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.missionAdvanceAt = 0;
     this.missionRenderKey = '';
     this.gameCompleted = false;
+    this.cinemaPhase = 'idle';
+    this.cinemaStartedAt = 0;
+    this.cinemaFadeStarted = false;
+    this.cinemaReloadScheduled = false;
     this.completionPopup = document.getElementById('game-completion-popup');
+    this.enjoyFilmPopup = document.getElementById('enjoy-film-popup');
+    this.enjoyFilmButton = document.getElementById('enjoy-film-confirm');
+    this.cinemaRigStart = null;
+    this.cinemaRigEnd = null;
+    this.cinemaCameraStart = null;
+    this.cinemaCameraEnd = null;
     this.hint = document.getElementById('gameplay-hint');
     this.crosshair = document.getElementById('crosshair');
     this.doorPopup = document.getElementById('door-confirmation-dialog');
     this.doorPopupHadPointerLock = false;
+    this.onEnjoyFilmClick = () => this.beginCinemaSequence();
+    this.enjoyFilmButton?.addEventListener('click', this.onEnjoyFilmClick);
     if (this.panel) document.body.appendChild(this.panel);
     this.onKeyDown = event => {
+      if (this.cinemaPhase === 'cinematic') return;
       if (document.body.classList.contains('is-start-menu-open')) return;
       if (this.doorPopup && !this.doorPopup.hidden) {
         event.preventDefault();
@@ -219,6 +233,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         !canvas ||
         (!isPointerLocked && event.target !== canvas) ||
         document.body.classList.contains('is-start-menu-open') ||
+        this.cinemaPhase === 'cinematic' ||
         (this.doorPopup && !this.doorPopup.hidden)
       ) return;
 
@@ -679,6 +694,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
           ? `Tekan F untuk berinteraksi · ${target.label}`
           : '';
     this.applyLighting();
+    this.updateCinemaExperience();
   },
 
   readyForScoring(editor, loader) {
@@ -1154,8 +1170,18 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       }
     } else if (item.collider && editor?.shell) {
       const bounds = new THREE.Box3().setFromObject(item.entity.getObject3D('mesh') || transform);
+      const autoFurniture = this.el.components['auto-furniture-loader'];
+      if (typeof autoFurniture?.collidesWithBox !== 'function') {
+        console.error('[Gameplay] Speaker rotation requires the auto-furniture collision checker.');
+        transform.position.copy(previousPosition);
+        transform.rotation.copy(previousRotation);
+        transform.updateMatrix();
+        transform.updateWorldMatrix(true, true);
+        item.rotationY = previousRotationY;
+        return;
+      }
       const obstacle = editor.shell.colliders.find(collider =>
-        collider !== item.collider && editor.collidesWithBox(bounds, collider)
+        collider !== item.collider && autoFurniture.collidesWithBox(bounds, collider)
       );
       if (obstacle) {
         transform.position.copy(previousPosition);
@@ -1426,7 +1452,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     const rotation = speaker.transform.object3D.getWorldQuaternion(new THREE.Quaternion());
     const yaw = new THREE.Euler().setFromQuaternion(rotation, 'YXZ').y;
     const facing = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-    return facing.dot(toSofa) >= 0.7;
+    return facing.dot(toSofa) >= SPEAKER_FACING_DOT;
   },
 
   getMissionObjectives() {
@@ -1513,11 +1539,11 @@ AFRAME.registerComponent('ergonomics-gameplay', {
               done: sofaFacing && sofaTableAligned
             },
             {
-              label: 'Atur jarak sofa ke TV ke rentang ideal 3,1–3,6 m.',
+              label: 'Atur jarak sofa ke TV ke rentang ideal 3,1–3,7 m.',
               done: distanceIdeal
             },
             {
-              label: 'Letakkan coffee table di antara TV dan sofa, dengan jarak nyaman sekitar satu jengkal.',
+              label: 'Letakkan meja depan TV di antara TV dan sofa dengan jarak perkiraan agar pengguna bisa masuk ke sela tanpa menabrak meja yang berpotensi menyebabkan cedera.',
               done: coffeeTableSuitable
             },
             {
@@ -1640,6 +1666,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       this.missionComplete = true;
       if (this.missionIndex === MISSION_COUNT - 1) {
         this.gameCompleted = true;
+        this.cinemaPhase = 'positioning';
         if (this.completionPopup) {
           this.completionPopup.hidden = false;
           window.setTimeout(() => {
@@ -1651,6 +1678,150 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       }
     }
     this.renderMission(objectives, this.missionComplete);
+  },
+
+  updateCinemaExperience() {
+    if (!this.gameCompleted) return;
+    if (this.cinemaPhase === 'cinematic') {
+      this.updateCinemaAnimation();
+      return;
+    }
+    if (this.cinemaPhase !== 'positioning') return;
+
+    const positionStatus = this.getCinemaPositionStatus();
+    if (!positionStatus) {
+      this.hint.textContent = 'Misi selesai. Masuk ke sela antara sofa dan meja depan TV.';
+      return;
+    }
+    if (!positionStatus.inGap) {
+      this.hint.textContent = 'Masuk ke tengah sela antara sofa dan meja depan TV.';
+      return;
+    }
+    if (!positionStatus.facingTV) {
+      this.hint.textContent = 'Anda sudah berada di sela. Hadap ke TV untuk melanjutkan.';
+      return;
+    }
+
+    this.cinemaPhase = 'prompt';
+    this.hint.textContent = '';
+    this.openEnjoyFilmPopup();
+  },
+
+  getCinemaPositionStatus() {
+    const editor = this.el.components['furniture-editor'];
+    const loader = this.el.components['auto-furniture-loader'];
+    const sofa = editor?.items.find(item => item.role === 'sofa');
+    const table = editor?.items.find(item => item.id === 'MEJA');
+    const tv = this.getRuntimeModelItems(loader).find(item => item.role === 'tv') ||
+      editor?.items.find(item => item.role === 'tv');
+    const cameraEntity = document.getElementById('player-camera');
+    const camera = cameraEntity?.getObject3D('camera');
+    if (!sofa?.collider || !table?.collider || !tv?.collider || !camera) return null;
+
+    const center = collider => new THREE.Vector3(
+      (collider.minX + collider.maxX) / 2,
+      0,
+      (collider.minZ + collider.maxZ) / 2
+    );
+    const sofaCenter = center(sofa.collider);
+    const tableCenter = center(table.collider);
+    const tvCenter = center(tv.collider);
+    const directionToTV = tvCenter.clone().sub(sofaCenter).normalize();
+    const sofaHalfExtent = Math.abs(directionToTV.x) *
+      (sofa.collider.maxX - sofa.collider.minX) / 2 +
+      Math.abs(directionToTV.z) * (sofa.collider.maxZ - sofa.collider.minZ) / 2;
+    const tableHalfExtent = Math.abs(directionToTV.x) *
+      (table.collider.maxX - table.collider.minX) / 2 +
+      Math.abs(directionToTV.z) * (table.collider.maxZ - table.collider.minZ) / 2;
+    const tableForwardDistance = tableCenter.sub(sofaCenter).dot(directionToTV);
+    const gapLength = tableForwardDistance - sofaHalfExtent - tableHalfExtent;
+    const gapCenter = sofaCenter.addScaledVector(
+      directionToTV,
+      sofaHalfExtent + gapLength / 2
+    );
+    const playerPosition = cameraEntity.object3D.getWorldPosition(new THREE.Vector3());
+    const playerOffset = playerPosition.sub(gapCenter);
+    playerOffset.y = 0;
+    const playerRadius = this.el.querySelector('#player-rig')
+      ?.components['room-collision']?.data?.radius ?? 0.18;
+    const usableGapHalfLength = gapLength / 2 - playerRadius - 0.035;
+    const playerForwardOffset = Math.abs(playerOffset.dot(directionToTV));
+    const playerLateralOffset = Math.abs(
+      playerOffset.x * directionToTV.z - playerOffset.z * directionToTV.x
+    );
+    const cameraDirection = camera.getWorldDirection(new THREE.Vector3());
+    cameraDirection.y = 0;
+    cameraDirection.normalize();
+    const directionFromPlayerToTV = tvCenter.clone().sub(playerPosition);
+    directionFromPlayerToTV.y = 0;
+    directionFromPlayerToTV.normalize();
+
+    return {
+      inGap: gapLength >= playerRadius * 2 + 0.07 &&
+        usableGapHalfLength >= 0 &&
+        playerForwardOffset <= usableGapHalfLength + 0.02 &&
+        playerLateralOffset <= 0.3,
+      facingTV: cameraDirection.dot(directionFromPlayerToTV) >= Math.cos(THREE.MathUtils.degToRad(20)),
+      directionToTV
+    };
+  },
+
+  openEnjoyFilmPopup() {
+    if (!this.enjoyFilmPopup || !this.enjoyFilmButton) {
+      console.error('[gameplay] The enjoy-film confirmation UI is missing.');
+      return;
+    }
+    document.getElementById('player-rig')
+      ?.components['fps-controls']?.desktopController?.exitPointerLock();
+    this.enjoyFilmPopup.hidden = false;
+    this.enjoyFilmButton.focus();
+  },
+
+  beginCinemaSequence() {
+    if (this.cinemaPhase !== 'prompt') return;
+    const positionStatus = this.getCinemaPositionStatus();
+    const playerRig = document.getElementById('player-rig');
+    const cameraEntity = document.getElementById('player-camera');
+    if (!positionStatus || !playerRig?.object3D || !cameraEntity?.object3D) {
+      console.error('[gameplay] Could not start the cinema sequence because the player camera is unavailable.');
+      return;
+    }
+
+    this.cinemaPhase = 'cinematic';
+    this.enjoyFilmPopup.hidden = true;
+    document.body.classList.add('is-cinema-mode');
+    window.dispatchEvent(new Event('blur'));
+    document.getElementById('player-rig')
+      ?.components['fps-controls']?.pause();
+    this.cinemaStartedAt = performance.now();
+    this.cinemaFadeStarted = false;
+    this.cinemaReloadScheduled = false;
+    this.cinemaRigStart = playerRig.object3D.position.clone();
+    this.cinemaRigEnd = this.cinemaRigStart.clone().addScaledVector(positionStatus.directionToTV, -0.06);
+    this.cinemaCameraStart = cameraEntity.object3D.position.clone();
+    this.cinemaCameraEnd = this.cinemaCameraStart.clone();
+    this.cinemaCameraEnd.y = Math.max(0.9, this.cinemaCameraStart.y - 0.55);
+  },
+
+  updateCinemaAnimation() {
+    const elapsed = performance.now() - this.cinemaStartedAt;
+    const progress = Math.min(1, elapsed / 2500);
+    const eased = progress * progress * (3 - 2 * progress);
+    const playerRig = document.getElementById('player-rig');
+    const cameraEntity = document.getElementById('player-camera');
+    if (playerRig?.object3D && cameraEntity?.object3D) {
+      playerRig.object3D.position.lerpVectors(this.cinemaRigStart, this.cinemaRigEnd, eased);
+      cameraEntity.object3D.position.lerpVectors(this.cinemaCameraStart, this.cinemaCameraEnd, eased);
+    }
+
+    if (elapsed >= 2800 && !this.cinemaFadeStarted) {
+      this.cinemaFadeStarted = true;
+      document.body.classList.add('is-cinema-fading');
+    }
+    if (elapsed >= 3800 && !this.cinemaReloadScheduled) {
+      this.cinemaReloadScheduled = true;
+      window.location.reload();
+    }
   },
 
   makeButton(label, action, active = false, toggle = false) {
@@ -1793,6 +1964,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.panel?.removeEventListener('click', this.onPanelClick);
     this.panel?.removeEventListener('input', this.onPanelInput);
     this.doorPopup?.removeEventListener('click', this.onDoorPopupClick);
+    this.enjoyFilmButton?.removeEventListener('click', this.onEnjoyFilmClick);
     document.removeEventListener('pointerdown', this.onTVUserGesture, true);
     document.removeEventListener('keydown', this.onTVUserGesture, true);
     document.removeEventListener('visibilitychange', this.onTVVisibilityChange);
