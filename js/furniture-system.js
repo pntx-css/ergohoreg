@@ -1,4 +1,4 @@
-const FURNITURE_GRID = 0.25;
+const FURNITURE_GRID = 0.1;
 const FURNITURE_CLEARANCE = 0.035;
 const FURNITURE_FLOOR_Y = 0;
 // Approximate TV console top height measured in the current room scene.

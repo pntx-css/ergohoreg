@@ -1,6 +1,7 @@
 const AUTO_PLACEMENT_MARGIN = 0.045;
 const AUTO_PLACEMENT_FLOOR_GAP = 0.015;
 const AUTO_PLACEMENT_STEP = 0.18;
+const RUG_AC_WALL_OFFSET = 0.45;
 
 function classifyAutoModel(filename) {
   const name = filename.toLowerCase().replace(/[_-]+/g, ' ');
@@ -27,7 +28,7 @@ function classifyAutoModel(filename) {
 }
 
 function autoModelPriority(type) {
-  return ({floor: -1, 'tv-stand': 0, tv: 1, sofa: 2, rug: 3, 'speaker-pair': 4, speaker: 4, table: 5, cabinet: 6, chair: 7, lamp: 8, purifier: 9, door: 10, switch: 11, generic: 12, 'air-conditioner': 13, 'ceiling-lamp': 14})[type] ?? 15;
+  return ({floor: -1, 'tv-stand': 0, tv: 1, sofa: 2, 'speaker-pair': 3, speaker: 3, rug: 4, table: 5, cabinet: 6, chair: 7, lamp: 8, purifier: 9, door: 10, switch: 11, generic: 12, 'air-conditioner': 13, 'ceiling-lamp': 14})[type] ?? 15;
 }
 
 function vectorData(vector, digits = 3) {
@@ -256,7 +257,7 @@ AFRAME.registerComponent('auto-furniture-loader', {
       'speaker-pair': {width: 1.45, depth: 0.62, height: 0.82},
       speaker: {width: 0.55, depth: 0.52, height: 0.9},
       sofa: {width: 2.3, depth: 1.2, height: 1.12},
-      rug: {width: 10 / 3, depth: 34 / 15, height: 0.06},
+      rug: {width: this.getTVSpeakerSystemWidth(), depth: 34 / 15, height: 0.06},
       door: {width: 1.18, depth: 0.34, height: 2.3},
       table: {width: 1.2, depth: 0.82, height: 0.62},
       lamp: {width: 0.48, depth: 0.48, height: 1.72},
@@ -306,6 +307,16 @@ AFRAME.registerComponent('auto-furniture-loader', {
 
   getPlacedModel(type) {
     return this.placedModels.find(item => item.role.type === type) || null;
+  },
+
+  getTVSpeakerSystemWidth() {
+    const components = this.placedModels.filter(item =>
+      ['tv-stand', 'speaker', 'speaker-pair'].includes(item.role.type)
+    );
+    if (!components.length) return 3.14;
+
+    return Math.max(...components.map(item => item.bounds.max.x)) -
+      Math.min(...components.map(item => item.bounds.min.x));
   },
 
   boxCenter(box) {
@@ -373,7 +384,10 @@ AFRAME.registerComponent('auto-furniture-loader', {
         const sofaCenter = sofaBox ? this.boxCenter(sofaBox) : new THREE.Vector3(0.128, this.getFloorY(), -0.179);
         const tvStandCenter = tvStand ? this.boxCenter(tvStand.bounds) : new THREE.Vector3(roomCenterX, this.getFloorY(), backZ + size.z / 2 + 0.08);
         return new THREE.Vector3(
-          (sofaCenter.x + tvStandCenter.x) / 2,
+          Math.max(
+            room.inside.minX + size.x / 2 + AUTO_PLACEMENT_MARGIN,
+            (sofaCenter.x + tvStandCenter.x) / 2 - RUG_AC_WALL_OFFSET
+          ),
           this.getFloorY(),
           (sofaCenter.z + tvStandCenter.z) / 2
         );

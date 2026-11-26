@@ -2,6 +2,7 @@ import type { Entity, Scene } from 'aframe';
 import '../public/js/gameplay.js';
 import { DesktopController } from './controllers/DesktopController';
 import { MobileController } from './controllers/MobileController';
+import { MobileDisplayController } from './controllers/MobileDisplayController';
 import { VRController } from './controllers/VRController';
 
 type GameMode = 'desktop' | 'mobile' | 'vr';
@@ -25,6 +26,7 @@ const statusEl = document.getElementById('controller-status');
 let currentMode: GameMode = GameMode.Desktop;
 let currentDesktopController: DesktopController | null = null;
 let currentMobileController: MobileController | null = null;
+let currentMobileDisplayController: MobileDisplayController | null = null;
 let currentVRController: VRController | null = null;
 let controllersInitialized = false;
 
@@ -41,10 +43,12 @@ function disposeControllers(): void {
   const fpsControls = playerRig?.components['fps-controls'] as FpsControls | undefined;
   currentDesktopController?.dispose();
   currentMobileController?.dispose();
+  currentMobileDisplayController?.dispose();
   currentVRController?.dispose();
   if (fpsControls) fpsControls.vrController = null;
   currentDesktopController = null;
   currentMobileController = null;
+  currentMobileDisplayController = null;
   currentVRController = null;
 }
 
@@ -71,7 +75,7 @@ function startActiveController(): void {
       break;
     case GameMode.Mobile:
       statusEl && (statusEl.hidden = true);
-      currentMobileController = new MobileController(fpsControls);
+      currentMobileController = new MobileController(cameraEl, fpsControls);
       break;
     case GameMode.VR:
       statusEl && (statusEl.hidden = true);
@@ -87,6 +91,9 @@ function initAppMode(mode: GameMode): void {
   controllersInitialized = false;
   currentMode = mode;
   document.body.dataset.mode = mode;
+  if (mode === GameMode.Mobile) {
+    currentMobileDisplayController = new MobileDisplayController();
+  }
   startActiveController();
 }
 

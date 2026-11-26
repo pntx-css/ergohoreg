@@ -54,14 +54,6 @@ AFRAME.registerComponent('fps-controls', {
     if (keys?.has('KeyA') || keys?.has('ArrowLeft')) strafe--;
     if (keys?.has('KeyD') || keys?.has('ArrowRight')) strafe++;
 
-    if (this.mobileController) {
-      const touchAxis = this.mobileController.getTouchAxis();
-      if (touchAxis) {
-        strafe = touchAxis.x;
-        forwardInput = touchAxis.y;
-      }
-    }
-
     const vrAxis = this.vrController?.getMovementAxis();
     if (vrAxis) {
       strafe = vrAxis.x;

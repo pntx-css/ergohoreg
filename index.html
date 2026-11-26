@@ -2,7 +2,7 @@
 <html lang="id">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#a1b3b7" />
     <meta
       name="description"
@@ -113,7 +113,34 @@
       </div>
     </section>
 
-    <div id="touch-move" aria-hidden="true"></div>
+    <div id="touch-look" aria-hidden="true"></div>
+    <div id="mobile-controls" role="group" aria-label="Kontrol permainan mobile">
+      <div id="mobile-dpad" role="group" aria-label="Kontrol arah">
+        <button type="button" data-key="KeyW" aria-label="Maju" aria-pressed="false">▲</button>
+        <button type="button" data-key="KeyA" aria-label="Bergerak ke kiri" aria-pressed="false">◀</button>
+        <button type="button" data-key="KeyS" aria-label="Mundur" aria-pressed="false">▼</button>
+        <button type="button" data-key="KeyD" aria-label="Bergerak ke kanan" aria-pressed="false">▶</button>
+      </div>
+      <button id="mobile-interact" type="button" aria-label="Interaksi (F)">F</button>
+    </div>
+    <section id="mobile-orientation-overlay" role="alertdialog" aria-modal="true" aria-labelledby="mobile-orientation-title">
+      <div class="mobile-orientation-overlay__panel">
+        <svg class="mobile-orientation-icon" viewBox="0 0 120 120" aria-hidden="true">
+          <path d="M22 30a47 47 0 0 1 77 5l8 10" />
+          <path d="m108 29-1 16-16-2" />
+          <rect x="39" y="38" width="42" height="70" rx="8" transform="rotate(-90 60 73)" />
+          <path d="M55 92h10" />
+        </svg>
+        <p>ERGOHOREG / MOBILE MODE</p>
+        <h1 id="mobile-orientation-title">PLEASE ROTATE YOUR DEVICE</h1>
+        <span id="mobile-orientation-hint">Putar perangkat ke posisi landscape untuk melanjutkan.</span>
+        <button class="mobile-fullscreen-button" type="button" data-mobile-fullscreen>ENTER FULLSCREEN</button>
+      </div>
+    </section>
+    <aside id="mobile-fullscreen-prompt" aria-live="polite">
+      <span id="mobile-fullscreen-hint">Untuk pengalaman layar penuh, aktifkan fullscreen.</span>
+      <button class="mobile-fullscreen-button" type="button" data-mobile-fullscreen>ENTER FULLSCREEN</button>
+    </aside>
     <div id="crosshair" aria-hidden="true"></div>
     <div id="collision-debug-panel" aria-live="polite" hidden></div>
     <section id="mission-text" aria-labelledby="mission-title">

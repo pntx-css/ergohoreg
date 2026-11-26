@@ -101,15 +101,238 @@ body.xr-capable .a-enter-vr {
   display: block !important;
 }
 
-#touch-move {
+#touch-look {
   display: none;
   position: fixed;
   z-index: 2;
-  left: 0;
-  bottom: 0;
-  width: 50vw;
-  height: 100dvh;
+  inset: 0;
   touch-action: none;
+}
+
+#mobile-controls {
+  display: none;
+  position: fixed;
+  z-index: 10;
+  right: max(22px, env(safe-area-inset-right));
+  bottom: max(22px, env(safe-area-inset-bottom));
+  left: max(22px, env(safe-area-inset-left));
+  align-items: flex-end;
+  justify-content: space-between;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#mobile-dpad {
+  display: grid;
+  grid-template: repeat(2, 62px) / repeat(3, 62px);
+  gap: 7px;
+  pointer-events: none;
+}
+
+#mobile-dpad button,
+#mobile-interact {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  border: 1px solid rgb(222 246 239 / 48%);
+  border-radius: 18px;
+  color: #f3fbf7;
+  background: rgb(10 28 31 / 48%);
+  box-shadow: 0 5px 18px rgb(0 0 0 / 20%);
+  font: 700 24px/1 system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(7px);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#mobile-dpad button:first-child { grid-area: 1 / 2; }
+#mobile-dpad button:nth-child(2) { grid-area: 2 / 1; }
+#mobile-dpad button:nth-child(3) { grid-area: 2 / 2; }
+#mobile-dpad button:nth-child(4) { grid-area: 2 / 3; }
+
+#mobile-interact {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  border-color: rgb(155 225 202 / 68%);
+  color: #10282c;
+  background: rgb(155 225 202 / 82%);
+  font-size: 22px;
+}
+
+#mobile-dpad button.is-pressed,
+#mobile-dpad button:active,
+#mobile-interact.is-pressed,
+#mobile-interact:active {
+  border-color: #b6f4d8;
+  color: #10282c;
+  background: #9be1ca;
+  box-shadow: 0 0 0 3px rgb(155 225 202 / 22%), 0 3px 12px rgb(0 0 0 / 24%);
+  transform: scale(.96);
+}
+
+#mobile-dpad button:focus-visible,
+#mobile-interact:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+body[data-mode="mobile"]:not(.is-start-menu-open) #touch-look,
+body[data-mode="mobile"]:not(.is-start-menu-open) #mobile-controls {
+  display: flex;
+}
+
+body[data-mode="mobile"] #mobile-controls[hidden],
+body.in-vr #mobile-controls,
+body.in-vr #touch-look {
+  display: none !important;
+}
+
+#mobile-orientation-overlay,
+#mobile-fullscreen-prompt {
+  display: none;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+#mobile-orientation-overlay {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  color: #eff8f5;
+  text-align: center;
+  background: linear-gradient(135deg, #0a191c, #103338 56%, #0b2227);
+  touch-action: none;
+}
+
+.mobile-orientation-overlay__panel {
+  display: grid;
+  justify-items: center;
+  width: min(440px, 100%);
+  gap: 12px;
+}
+
+.mobile-orientation-icon {
+  width: 112px;
+  height: 112px;
+  fill: none;
+  stroke: #9be1ca;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+  animation: mobile-rotate-prompt 2.8s ease-in-out infinite;
+}
+
+.mobile-orientation-overlay__panel > p {
+  margin: 8px 0 0;
+  color: #9be1ca;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .16em;
+}
+
+.mobile-orientation-overlay__panel h1 {
+  margin: 0;
+  font-size: clamp(22px, 6vw, 32px);
+  letter-spacing: .04em;
+}
+
+#mobile-orientation-hint,
+#mobile-fullscreen-hint {
+  color: #c5d5d4;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mobile-fullscreen-button {
+  min-height: 48px;
+  margin-top: 10px;
+  padding: 0 20px;
+  border: 1px solid #9be1ca;
+  border-radius: 999px;
+  color: #10282c;
+  background: #9be1ca;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
+  font: 800 12px/1 system-ui, sans-serif;
+  letter-spacing: .08em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.mobile-fullscreen-button:hover,
+.mobile-fullscreen-button:focus-visible {
+  outline: 3px solid rgb(155 225 202 / 38%);
+  outline-offset: 3px;
+  background: #b6f4d8;
+}
+
+.mobile-fullscreen-button[hidden] {
+  display: none !important;
+}
+
+#mobile-fullscreen-prompt {
+  position: fixed;
+  z-index: 80;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  align-items: center;
+  gap: 8px 14px;
+  width: min(420px, calc(100vw - 28px));
+  padding: 10px 14px;
+  transform: translateX(-50%);
+  border: 1px solid rgb(198 255 232 / 25%);
+  border-radius: 14px;
+  color: #eff8f5;
+  text-align: center;
+  background: rgb(10 28 31 / 88%);
+  backdrop-filter: blur(8px);
+}
+
+#mobile-fullscreen-prompt .mobile-fullscreen-button {
+  min-height: 40px;
+  margin: 0;
+  padding: 0 15px;
+  white-space: nowrap;
+}
+
+body[data-mode="mobile"].is-mobile-device.is-mobile-portrait:not(.is-start-menu-open) #mobile-orientation-overlay {
+  display: grid;
+}
+
+body[data-mode="mobile"].is-mobile-device:not(.is-mobile-fullscreen):not(.is-mobile-portrait):not(.is-start-menu-open) #mobile-fullscreen-prompt {
+  display: flex;
+}
+
+body[data-mode="mobile"].is-mobile-device.is-mobile-portrait #touch-look,
+body[data-mode="mobile"].is-mobile-device.is-mobile-portrait #mobile-controls {
+  display: none !important;
+}
+
+@keyframes mobile-rotate-prompt {
+  0%, 20%, 100% { transform: rotate(0deg); }
+  45%, 75% { transform: rotate(90deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-orientation-icon { animation: none; }
+}
+
+@supports (height: 100dvh) {
+  body[data-mode="mobile"].is-mobile-device,
+  body[data-mode="mobile"].is-mobile-device a-scene {
+    width: 100dvw;
+    height: 100dvh;
+  }
 }
 
 #crosshair {
@@ -543,19 +766,23 @@ body.is-start-menu-open #gameplay-hint {
 }
 
 @media (pointer: coarse) and (hover: none) {
-  #touch-move {
-    display: block;
-  }
-
   .interaction-panel {
     max-height: min(40vh, 360px);
   }
 }
 
-body.in-vr #touch-move {
-  display: none;
-}
+@media (max-height: 500px) and (orientation: landscape) {
+  #mobile-controls {
+    right: max(18px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    left: max(18px, env(safe-area-inset-left));
+  }
 
-body.in-vr #grab-controls {
-  display: none;
+  #mobile-dpad {
+    grid-template: repeat(2, 52px) / repeat(3, 52px);
+    gap: 5px;
+  }
+
+  #mobile-dpad button { width: 52px; height: 52px; border-radius: 15px; }
+  #mobile-interact { width: 62px; height: 62px; }
 }

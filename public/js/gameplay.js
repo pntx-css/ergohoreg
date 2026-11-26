@@ -1501,6 +1501,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
           const viewingStatus = this.el.components['ergonomics-evaluator']
             ?.getViewingDistanceStatus(editor?.items || [], loader);
           const sofaFacing = !!viewingStatus?.facingTV;
+          const sofaTableAligned = !!viewingStatus?.sofaTableAligned;
           const distanceIdeal = !!viewingStatus?.distanceIdeal;
           const coffeeTableSuitable = !!viewingStatus?.coffeeTableSuitable;
           const coffeeTableOnRugCenter = !!viewingStatus?.coffeeTableOnRugCenter;
@@ -1508,19 +1509,19 @@ AFRAME.registerComponent('ergonomics-gameplay', {
           const furniturePlaced = !editor?.grabbedItem;
           return [
             {
-              label: 'Putar dan posisikan sofa agar benar-benar menghadap TV.',
-              done: sofaFacing
+              label: 'Arahkan sofa ke TV dan sejajarkan titik tengah sofa dengan meja.',
+              done: sofaFacing && sofaTableAligned
             },
             {
               label: 'Atur jarak sofa ke TV ke rentang ideal 3,1–3,6 m.',
               done: distanceIdeal
             },
             {
-              label: 'Letakkan coffee table di antara TV dan sofa, dengan jarak nyaman sekitar satu jengkal dari sofa.',
+              label: 'Letakkan coffee table di antara TV dan sofa, dengan jarak nyaman sekitar satu jengkal.',
               done: coffeeTableSuitable
             },
             {
-              label: 'Tempatkan coffee table di tengah karpet.',
+              label: 'Tempatkan coffee table tepat di tengah karpet agar sisa sisi kiri dan kanan seimbang.',
               done: coffeeTableOnRugCenter
             },
             {

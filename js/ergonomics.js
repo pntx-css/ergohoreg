@@ -8,6 +8,8 @@ const ERGONOMY_METRICS = [
 const scoreClamp = value => Math.max(0, Math.min(100, Math.round(value)));
 const IDEAL_VIEWING_DISTANCE = {min: 3.1, max: 3.6};
 const IDEAL_SOFA_TABLE_CLEARANCE = {min: 0.15, max: 0.35};
+// Half the diagonal of the furniture editor's 0.1 m grid, plus rounding tolerance.
+const FURNITURE_ALIGNMENT_TOLERANCE = 0.08;
 const IDEAL_SOFA_FACING_DOT = Math.cos(THREE.MathUtils.degToRad(20));
 const itemCenter = item => new THREE.Vector3(
   (item.collider.minX + item.collider.maxX) / 2,
@@ -122,6 +124,7 @@ AFRAME.registerComponent('ergonomics-evaluator', {
         angleDegrees: null,
         distance: null,
         sofaCoffeeTableClearance: null,
+        sofaTableAligned: false,
         coffeeTableSuitable: false,
         coffeeTableOnRugCenter: false,
         facingTV: false,
@@ -152,18 +155,24 @@ AFRAME.registerComponent('ergonomics-evaluator', {
     const tableLateralDistance = Math.abs(
       tableOffset.x * directionToTV.z - tableOffset.z * directionToTV.x
     );
+    const sofaTableAligned = tableLateralDistance <= FURNITURE_ALIGNMENT_TOLERANCE;
     const coffeeTableCenter = itemCenter(coffeeTable);
     const rugCenter = rug.bounds.getCenter(new THREE.Vector3());
-    const rugCenterOffset = Math.hypot(
-      coffeeTableCenter.x - rugCenter.x,
-      coffeeTableCenter.z - rugCenter.z
+    const tableToRugCenter = coffeeTableCenter.sub(rugCenter);
+    tableToRugCenter.y = 0;
+    const rugLateralOffset = Math.abs(
+      tableToRugCenter.x * directionToTV.z - tableToRugCenter.z * directionToTV.x
     );
+    const rugForwardOffset = Math.abs(tableToRugCenter.dot(directionToTV));
+    const rugCenterOffset = Math.hypot(rugLateralOffset, rugForwardOffset);
     const coffeeTableFitsOnRug =
       coffeeTable.collider.minX >= rug.bounds.min.x &&
       coffeeTable.collider.maxX <= rug.bounds.max.x &&
       coffeeTable.collider.minZ >= rug.bounds.min.z &&
       coffeeTable.collider.maxZ <= rug.bounds.max.z;
-    const coffeeTableOnRugCenter = coffeeTableFitsOnRug && rugCenterOffset <= 0.45;
+    const coffeeTableOnRugCenter = coffeeTableFitsOnRug &&
+      rugLateralOffset <= FURNITURE_ALIGNMENT_TOLERANCE &&
+      rugForwardOffset <= FURNITURE_ALIGNMENT_TOLERANCE;
     const sofaHalfExtent = Math.abs(directionToTV.x) * (sofa.collider.maxX - sofa.collider.minX) / 2 +
       Math.abs(directionToTV.z) * (sofa.collider.maxZ - sofa.collider.minZ) / 2;
     const tableHalfExtent = Math.abs(directionToTV.x) * (coffeeTable.collider.maxX - coffeeTable.collider.minX) / 2 +
@@ -174,7 +183,7 @@ AFRAME.registerComponent('ergonomics-evaluator', {
       sofaCoffeeTableClearance <= IDEAL_SOFA_TABLE_CLEARANCE.max &&
       tableFitsBeforeTV &&
       tableForwardDistance > 0 &&
-      tableLateralDistance <= 0.65 &&
+      sofaTableAligned &&
       coffeeTableOnRugCenter;
 
     const distanceQuality = distanceIdeal
@@ -201,7 +210,7 @@ AFRAME.registerComponent('ergonomics-evaluator', {
             : Math.max(0, 100 - (sofaCoffeeTableClearance - IDEAL_SOFA_TABLE_CLEARANCE.max) * 50);
     const tableQuality = Math.min(
       clearanceQuality,
-      Math.max(0, 100 - Math.max(0, tableLateralDistance - 0.65) * 55),
+      Math.max(0, 100 - Math.max(0, tableLateralDistance - FURNITURE_ALIGNMENT_TOLERANCE) * 55),
       tableFitsBeforeTV ? 100 : 0
     );
     const rugQuality = Math.min(
@@ -220,6 +229,7 @@ AFRAME.registerComponent('ergonomics-evaluator', {
       angleDegrees,
       distance,
       sofaCoffeeTableClearance,
+      sofaTableAligned,
       coffeeTableSuitable,
       coffeeTableOnRugCenter,
       facingTV,
@@ -235,6 +245,7 @@ AFRAME.registerComponent('ergonomics-evaluator', {
       sofaCoffeeTableClearance: status.sofaCoffeeTableClearance === null
         ? null
         : Number(status.sofaCoffeeTableClearance.toFixed(2)),
+      sofaTableAligned: status.sofaTableAligned,
       coffeeTableSuitable: status.coffeeTableSuitable,
       coffeeTableOnRugCenter: status.coffeeTableOnRugCenter,
       viewingDistance: status.score
