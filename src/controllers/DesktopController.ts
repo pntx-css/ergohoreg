@@ -12,8 +12,15 @@ export class DesktopController {
   private active = false;
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (!this.active || !this.pointerLockController.getIsLocked()) return;
+    if (
+      document.body.dataset.mode !== 'desktop' ||
+      document.body.classList.contains('is-start-menu-open')
+    ) return;
     if (!['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]:not([hidden])')
+    ) return;
 
     event.preventDefault();
     this.keys.add(event.code);

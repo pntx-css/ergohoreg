@@ -109,6 +109,9 @@ function handleModeSelect(mode: string): void {
   document.getElementById('settings-toggle')?.setAttribute('aria-expanded', 'false');
 
   initAppMode(selectedMode);
+  if (selectedMode === GameMode.Desktop) {
+    currentDesktopController?.requestPointerLock();
+  }
   sceneEl?.dispatchEvent(new Event('gameplay-started'));
   if (selectedMode === GameMode.VR) {
     const enteringVR = sceneEl?.enterVR();
