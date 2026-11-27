@@ -830,6 +830,10 @@ body.is-start-menu-open #gameplay-hint {
   color: #9be1ca;
 }
 
+#controller-status.is-error {
+  color: #ffb1a8;
+}
+
 #grab-controls {
   display: none !important;
 }

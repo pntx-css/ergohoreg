@@ -38,6 +38,7 @@ function updateDesktopStatus(isLocked: boolean): void {
     ? 'Kontrol aktif · Esc untuk keluar'
     : 'WASD bergerak · klik touchpad dua kali di area game untuk mengunci pointer';
   statusEl.classList.toggle('is-active', isLocked);
+  statusEl.classList.remove('is-error');
 }
 
 function disposeControllers(): void {
@@ -71,7 +72,14 @@ function startActiveController(): void {
         sceneEl,
         fpsControls,
         updateDesktopStatus,
-        error => console.error('[main] Pointer Lock could not be activated.', error)
+        error => {
+          console.error('[main] Pointer Lock could not be activated.', error);
+          if (!statusEl || currentMode !== GameMode.Desktop) return;
+          statusEl.hidden = false;
+          statusEl.textContent = 'Pointer gagal dikunci · klik dua kali area game untuk mencoba lagi';
+          statusEl.classList.remove('is-active');
+          statusEl.classList.add('is-error');
+        }
       );
       updateDesktopStatus(false);
       break;

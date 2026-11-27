@@ -26,14 +26,14 @@ export class PointerLockController {
     ) return;
 
     const bounds = this.viewport.getBoundingClientRect();
+    const target = event.target;
     if (
       event.clientX < bounds.left ||
       event.clientX > bounds.right ||
       event.clientY < bounds.top ||
       event.clientY > bounds.bottom ||
-      (event.target instanceof Element &&
-        event.target.closest('button, input, textarea, select, a, [role="dialog"]')) ||
-      this.isOverUi(event.clientX, event.clientY)
+      (target instanceof Element &&
+        target.closest('button, input, textarea, select, a, [role="dialog"], [role="alertdialog"]'))
     ) return;
 
     this.requestLock();
@@ -41,10 +41,10 @@ export class PointerLockController {
 
   private readonly onPointerLockChange = (): void => {
     const isLocked = document.pointerLockElement === this.viewport;
+    this.requestInProgress = false;
     if (this.locked === isLocked) return;
 
     this.locked = isLocked;
-    this.requestInProgress = false;
     this.errorReported = false;
     this.onLockChange(isLocked);
   };
@@ -105,15 +105,32 @@ export class PointerLockController {
   }
 
   public requestLock(): void {
-    if (this.locked || this.requestInProgress || document.pointerLockElement) return;
+    if (this.locked || this.requestInProgress) return;
     this.errorReported = false;
+    if (document.pointerLockElement === this.viewport) {
+      this.onPointerLockChange();
+      return;
+    }
+    if (document.pointerLockElement) {
+      this.reportError(new Error('Pointer Lock is already owned by another element.'));
+      return;
+    }
+    if (typeof this.viewport.requestPointerLock !== 'function') {
+      this.reportError(new Error('Pointer Lock API is not supported by this browser.'));
+      return;
+    }
     this.requestInProgress = true;
 
     try {
-      const requestPointerLock = this.viewport.requestPointerLock as () => Promise<void> | void;
-      const request = requestPointerLock.call(this.viewport);
-      if (request && typeof request.catch === 'function') {
-        request.catch(error => this.reportError(error instanceof Error ? error : new Error(String(error))));
+      const request = this.viewport.requestPointerLock();
+      if (request && typeof request.then === 'function') {
+        request.then(
+          () => {
+            this.requestInProgress = false;
+            this.onPointerLockChange();
+          },
+          error => this.reportError(error instanceof Error ? error : new Error(String(error)))
+        );
       }
     } catch (error) {
       this.reportError(error instanceof Error ? error : new Error(String(error)));
@@ -140,34 +157,6 @@ export class PointerLockController {
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('wheel', this.onWheel);
     this.exitLock();
-  }
-
-  private isOverUi(x: number, y: number): boolean {
-    const overlayIds = [
-      'start-menu',
-      'settings-dialog',
-      'interaction-panel',
-      'door-confirmation-dialog',
-      'game-completion-popup',
-      'enjoy-film-popup',
-      'f-interaction-popup',
-      'ergonomics-panel',
-      'position-coordinates',
-      'grab-controls',
-      'controller-status',
-      'mobile-controls',
-      'mobile-orientation-overlay',
-      'mobile-fullscreen-prompt'
-    ];
-
-    return overlayIds.some(id => {
-      const element = document.getElementById(id);
-      if (!element || element.hidden) return false;
-      const style = getComputedStyle(element);
-      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
-      const bounds = element.getBoundingClientRect();
-      return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
-    });
   }
 
   private reportError(error: Event | Error): void {
