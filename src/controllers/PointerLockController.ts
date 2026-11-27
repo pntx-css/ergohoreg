@@ -16,10 +16,26 @@ export class PointerLockController {
   private initialized = false;
   private errorReported = false;
   private requestInProgress = false;
-  private dragPointer: {id: number; x: number; y: number} | null = null;
 
   private readonly onDoubleClick = (event: MouseEvent): void => {
-    if (event.target !== this.viewport || this.locked || this.isOverUi(event.clientX, event.clientY)) return;
+    if (
+      event.detail < 2 ||
+      this.locked ||
+      document.body.dataset.mode !== 'desktop' ||
+      document.body.classList.contains('is-start-menu-open')
+    ) return;
+
+    const bounds = this.viewport.getBoundingClientRect();
+    if (
+      event.clientX < bounds.left ||
+      event.clientX > bounds.right ||
+      event.clientY < bounds.top ||
+      event.clientY > bounds.bottom ||
+      (event.target instanceof Element &&
+        event.target.closest('button, input, textarea, select, a, [role="dialog"]')) ||
+      this.isOverUi(event.clientX, event.clientY)
+    ) return;
+
     this.requestLock();
   };
 
@@ -30,7 +46,6 @@ export class PointerLockController {
     this.locked = isLocked;
     this.requestInProgress = false;
     this.errorReported = false;
-    this.dragPointer = null;
     this.onLockChange(isLocked);
   };
 
@@ -43,35 +58,11 @@ export class PointerLockController {
     this.updateLook(event.movementX, event.movementY);
   };
 
-  private readonly onPointerDown = (event: PointerEvent): void => {
-    if (
-      this.locked ||
-      event.pointerType !== 'mouse' ||
-      event.button !== 0 ||
-      event.target !== this.viewport ||
-      document.body.dataset.mode !== 'desktop' ||
-      document.body.classList.contains('is-start-menu-open')
-    ) return;
-    this.dragPointer = {id: event.pointerId, x: event.clientX, y: event.clientY};
-    this.viewport.setPointerCapture(event.pointerId);
-  };
-
-  private readonly onPointerMove = (event: PointerEvent): void => {
-    if (this.locked || !this.dragPointer || event.pointerId !== this.dragPointer.id) return;
-    this.updateLook(event.clientX - this.dragPointer.x, event.clientY - this.dragPointer.y);
-    this.dragPointer.x = event.clientX;
-    this.dragPointer.y = event.clientY;
-  };
-
-  private readonly onPointerEnd = (event: PointerEvent): void => {
-    if (this.dragPointer?.id === event.pointerId) this.dragPointer = null;
-  };
-
   private updateLook(deltaX: number, deltaY: number): void {
     const look = (this.camera as CameraEntity).components['look-controls'];
     if (!look?.yawObject || !look.pitchObject) return;
 
-    const sensitivity = 0.003;
+    const sensitivity = 0.0022;
     look.yawObject.rotation.y -= deltaX * sensitivity;
     look.pitchObject.rotation.x -= deltaY * sensitivity;
 
@@ -106,12 +97,7 @@ export class PointerLockController {
     if (this.initialized) return;
     this.initialized = true;
 
-    this.viewport.addEventListener('dblclick', this.onDoubleClick);
-    this.viewport.addEventListener('pointerdown', this.onPointerDown);
-    this.viewport.addEventListener('pointermove', this.onPointerMove);
-    this.viewport.addEventListener('pointerup', this.onPointerEnd);
-    this.viewport.addEventListener('pointercancel', this.onPointerEnd);
-    this.viewport.addEventListener('lostpointercapture', this.onPointerEnd);
+    document.addEventListener('click', this.onDoubleClick);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
     document.addEventListener('pointerlockerror', this.onPointerLockError);
     document.addEventListener('mousemove', this.onMouseMove);
@@ -148,12 +134,7 @@ export class PointerLockController {
     if (!this.initialized) return;
     this.initialized = false;
 
-    this.viewport.removeEventListener('dblclick', this.onDoubleClick);
-    this.viewport.removeEventListener('pointerdown', this.onPointerDown);
-    this.viewport.removeEventListener('pointermove', this.onPointerMove);
-    this.viewport.removeEventListener('pointerup', this.onPointerEnd);
-    this.viewport.removeEventListener('pointercancel', this.onPointerEnd);
-    this.viewport.removeEventListener('lostpointercapture', this.onPointerEnd);
+    document.removeEventListener('click', this.onDoubleClick);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     document.removeEventListener('pointerlockerror', this.onPointerLockError);
     document.removeEventListener('mousemove', this.onMouseMove);
@@ -165,10 +146,18 @@ export class PointerLockController {
     const overlayIds = [
       'start-menu',
       'settings-dialog',
+      'interaction-panel',
+      'door-confirmation-dialog',
+      'game-completion-popup',
+      'enjoy-film-popup',
+      'f-interaction-popup',
       'ergonomics-panel',
       'position-coordinates',
       'grab-controls',
-      'controller-status'
+      'controller-status',
+      'mobile-controls',
+      'mobile-orientation-overlay',
+      'mobile-fullscreen-prompt'
     ];
 
     return overlayIds.some(id => {

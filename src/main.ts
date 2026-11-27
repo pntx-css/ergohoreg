@@ -31,11 +31,12 @@ let currentVRController: VRController | null = null;
 let controllersInitialized = false;
 
 function updateDesktopStatus(isLocked: boolean): void {
+  document.body.classList.toggle('is-pointer-locked', isLocked);
   if (!statusEl) return;
   statusEl.hidden = currentMode !== GameMode.Desktop || document.body.classList.contains('is-start-menu-open');
   statusEl.textContent = isLocked
     ? 'Kontrol aktif · Esc untuk keluar'
-    : 'WASD bergerak · tahan klik kiri dan geser mouse/touchpad untuk melihat';
+    : 'WASD bergerak · klik touchpad dua kali di area game untuk mengunci pointer';
   statusEl.classList.toggle('is-active', isLocked);
 }
 
@@ -46,6 +47,7 @@ function disposeControllers(): void {
   currentMobileDisplayController?.dispose();
   currentVRController?.dispose();
   if (fpsControls) fpsControls.vrController = null;
+  document.body.classList.remove('is-pointer-locked');
   currentDesktopController = null;
   currentMobileController = null;
   currentMobileDisplayController = null;

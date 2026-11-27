@@ -346,6 +346,15 @@ body[data-mode="mobile"].is-mobile-device.is-mobile-portrait #mobile-controls {
   pointer-events: none;
 }
 
+body[data-mode="desktop"]:not(.is-pointer-locked) #crosshair {
+  display: none;
+}
+
+body.is-pointer-locked,
+body.is-pointer-locked * {
+  cursor: none !important;
+}
+
 #crosshair::before,
 #crosshair::after {
   position: absolute;
