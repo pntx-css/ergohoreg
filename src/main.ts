@@ -35,7 +35,7 @@ function updateDesktopStatus(isLocked: boolean): void {
   statusEl.hidden = currentMode !== GameMode.Desktop || document.body.classList.contains('is-start-menu-open');
   statusEl.textContent = isLocked
     ? 'Kontrol aktif · Esc untuk keluar'
-    : 'Double-klik viewport untuk mengaktifkan mouse · WASD bergerak';
+    : 'WASD bergerak · tahan klik kiri dan geser mouse/touchpad untuk melihat';
   statusEl.classList.toggle('is-active', isLocked);
 }
 
@@ -109,9 +109,6 @@ function handleModeSelect(mode: string): void {
   document.getElementById('settings-toggle')?.setAttribute('aria-expanded', 'false');
 
   initAppMode(selectedMode);
-  if (selectedMode === GameMode.Desktop) {
-    currentDesktopController?.requestPointerLock();
-  }
   sceneEl?.dispatchEvent(new Event('gameplay-started'));
   if (selectedMode === GameMode.VR) {
     const enteringVR = sceneEl?.enterVR();
