@@ -1,7 +1,9 @@
-import telephoneAudioUrl from '../../assets/telephone.mp3?url';
-import acAudioUrl from '../../assets/ac.mp3?url';
-import tvVideoUrl from '../tv_video/video.mp4?url';
-import tvAudioUrl from '../tv_video/kaget.mp3?url';
+import telephoneAudioUrl from '../../assets/telephone.aac?url';
+import acAudioUrl from '../../assets/ac.aac?url';
+import tvVideoOneUrl from '../tv_video/video-1.webm?url';
+import tvVideoTwoUrl from '../tv_video/video-2.webm?url';
+import tvAudioOneUrl from '../tv_video/audio-1.aac?url';
+import tvAudioTwoUrl from '../tv_video/audio-2.aac?url';
 
 const LIGHTING_SCORES = {25: 35, 50: 75, 75: 100, 100: 40};
 const LIGHT_LEVELS = {25: 0.34, 50: 0.67, 75: 1, 100: 1.34};
@@ -35,7 +37,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.acAudio.loop = true;
     this.acAudioContext = new AudioContext();
     this.acAudioGain = this.acAudioContext.createGain();
-    this.acAudioGain.gain.value = 7;
+    this.acAudioGain.gain.value = 1;
     this.acAudioContext.createMediaElementSource(this.acAudio).connect(this.acAudioGain);
     this.acAudioGain.connect(this.acAudioContext.destination);
     this.initTVMedia();
@@ -305,8 +307,12 @@ AFRAME.registerComponent('ergonomics-gameplay', {
   },
 
   initTVMedia() {
+    this.tvMedia = [
+      {videoUrl: tvVideoOneUrl, audioUrl: tvAudioOneUrl},
+      {videoUrl: tvVideoTwoUrl, audioUrl: tvAudioTwoUrl}
+    ];
+    this.tvMediaIndex = -1;
     this.tvVideo = document.createElement('video');
-    this.tvVideo.src = tvVideoUrl;
     this.tvVideo.preload = 'auto';
     this.tvVideo.loop = true;
     this.tvVideo.muted = true;
@@ -343,8 +349,6 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.tvAudio.preload = 'auto';
     this.tvAudio.loop = true;
     this.tvAudio.crossOrigin = 'anonymous';
-    this.tvAudio.src = tvAudioUrl;
-    this.tvAudio.load();
     this.tvAudioContext = this.acAudioContext;
     this.tvAudioSource = this.tvAudioContext.createMediaElementSource(this.tvAudio);
     this.tvSpeakerAudio = {};
@@ -362,12 +366,36 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       this.tvSpeakerAudio[side] = {gain, panner};
     }
     this.syncSpeakerAudioGains();
+  },
+
+  selectTVMedia(index) {
+    if (!this.tvVideo || !this.tvAudio || !this.tvMedia?.length) return;
+    this.tvMediaIndex = ((index % this.tvMedia.length) + this.tvMedia.length) % this.tvMedia.length;
+    const media = this.tvMedia[this.tvMediaIndex];
+    this.tvVideo.pause();
+    this.tvAudio.pause();
+    this.tvVideoStarting = false;
+    this.tvAudioStarting = false;
+    this.tvVideo.src = media.videoUrl;
+    this.tvAudio.src = media.audioUrl;
+    this.tvVideo.currentTime = 0;
+    this.tvAudio.currentTime = 0;
     this.tvVideo.load();
+    this.tvAudio.load();
+  },
+
+  toggleTVPower() {
+    if (!this.audioState.tvOn) {
+      this.selectTVMedia(this.tvMediaIndex + 1);
+    }
+    this.audioState.tvOn = !this.audioState.tvOn;
+    this.updateTVAppearance();
+    this.syncTVPlayback();
   },
 
   syncTVPlayback(forceAudioSeek = false) {
     if (!this.tvVideo || !this.tvAudio) return;
-    // The MP4 is a silent visual surface; only kaget.mp3 enters the audio graph.
+    // The WebM is a visual surface; only the matching AAC enters the speaker audio graph.
     this.tvVideo.muted = true;
     this.tvVideo.defaultMuted = true;
     this.tvVideo.volume = 0;
@@ -538,7 +566,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
       const enabled = this.audioState[side === 'left' ? 'speakerLeftOn' : 'speakerRightOn'];
       const volume = this.audioState[side === 'left' ? 'speakerLeftVolume' : 'speakerRightVolume'];
       const gain = this.tvSpeakerAudio[side]?.gain?.gain;
-      if (gain) gain.value = enabled ? volume / 100 : 0;
+      if (gain) gain.value = enabled ? Math.min(volume / 70, 100 / 70) : 0;
     }
   },
 
@@ -940,9 +968,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
     this.openPanel(target);
     if (target.kind === 'switch') this.toggleLight();
     else if (target.kind === 'tv') {
-      this.audioState.tvOn = !this.audioState.tvOn;
-      this.updateTVAppearance();
-      this.syncTVPlayback();
+      this.toggleTVPower();
     } else if (target.kind === 'phone') {
       this.audioState.phoneOn = !this.audioState.phoneOn;
       this.syncPhoneAudio();
@@ -1300,9 +1326,7 @@ AFRAME.registerComponent('ergonomics-gameplay', {
         this.applyLighting();
         break;
       case 'tv-power':
-        this.audioState.tvOn = !this.audioState.tvOn;
-        this.updateTVAppearance();
-        this.syncTVPlayback();
+        this.toggleTVPower();
         break;
       case 'speaker-rotate-left':
         this.rotateSpeaker(-15);
